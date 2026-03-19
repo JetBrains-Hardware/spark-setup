@@ -1,0 +1,20 @@
+FROM nvcr.io/nvidia/vllm:25.11-py3
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    HF_HOME=/hub \
+    HF_HUB_CACHE=/hub \
+    HF_HUB_OFFLINE=1 \
+    VLLM_DOWNLOAD_DIR=/hub \
+    VLLM_WORKER_MULTIPROCESS_LOAD=1
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libnotify-bin && \
+    pip install --no-cache-dir gpt-oss==0.0.5 runai-model-streamer && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY in-container.sh /app/in-container.sh
+RUN chmod +x /app/in-container.sh
+
+ENTRYPOINT ["/app/in-container.sh"]

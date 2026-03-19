@@ -1,0 +1,5 @@
+Host spark
+    HostName your-spark-host
+    User jetbrains
+    IdentitiesOnly yes
+    IdentityFile ~/.ssh/spark
