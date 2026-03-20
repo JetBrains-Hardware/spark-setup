@@ -15,8 +15,9 @@ export REMOTE=jetbrains@your-spark-host
 - if the model snapshot already exists in `~/.cache/huggingface`, they stay offline
 - if the snapshot is missing, they allow a first-run download
 
-`run-gpt-oss.sh` is only partially offline-first: the model snapshot can come from cache, but a cold Docker image
-build still needs network access unless `gpt-oss-custom:latest` or its build layers are already present.
+`run-gpt-oss.sh` is only partially offline-first: if the pinned snapshot is missing or incomplete it will repair the
+cache, and a cold Docker image build still needs network access unless `gpt-oss-custom:latest` or its build layers
+are already present.
 
 ## SSH host key failures
 

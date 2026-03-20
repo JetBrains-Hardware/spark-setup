@@ -24,6 +24,48 @@ export VLLM_WORKER_MULTIPROCESS_LOAD="${VLLM_WORKER_MULTIPROCESS_LOAD:-1}"
 # export VLLM_ENFORCE_EAGER=1  # Disabled to allow CUDA graph compilation
 # export TORCHDYNAMO_DISABLE=1  # Disabled to allow torch.compile optimizations
 MODEL_SNAPSHOT="${HF_HOME}/hub/models--${MODEL_PATH_NAME}/snapshots/${MODEL_REVISION}"
+MODEL_INCLUDE_PATTERNS=(
+    "chat_template.jinja"
+    "config.json"
+    "generation_config.json"
+    "model-*.safetensors"
+    "model.safetensors.index.json"
+    "tokenizer.json"
+    "tokenizer_config.json"
+)
+
+snapshot_has_complete_weights() {
+    local snapshot="$1"
+    local actual_shards=0
+    local expected_shards=0
+
+    [ -d "$snapshot" ] || return 1
+    [ -f "$snapshot/config.json" ] || return 1
+    if [ ! -f "$snapshot/tokenizer.json" ] && [ ! -f "$snapshot/tokenizer_config.json" ] && \
+       [ ! -f "$snapshot/tokenizer.model" ]; then
+        return 1
+    fi
+
+    actual_shards="$(find "$snapshot" -maxdepth 1 -name 'model-*.safetensors' | wc -l | tr -d ' ')"
+    [ "${actual_shards:-0}" -gt 0 ] || return 1
+
+    if [ -f "$snapshot/model.safetensors.index.json" ]; then
+        expected_shards="$(python3 - "$snapshot/model.safetensors.index.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+print(len(set(data.get("weight_map", {}).values())))
+PY
+)"
+        [ "${expected_shards:-0}" -gt 0 ] || return 1
+        [ "$actual_shards" -ge "$expected_shards" ] || return 1
+    fi
+
+    return 0
+}
 
 # Function to send OS notification (fails silently if no X server)
 send_notification() {
@@ -72,14 +114,30 @@ wait_for_port_ready() {
 
 # === One-time setup ===
 
-# Download weights if missing; allow online mode only for the download
-if [[ ! -d "$MODEL_SNAPSHOT" ]] || ! ls "$MODEL_SNAPSHOT"/model-*.safetensors >/dev/null 2>&1; then
+# Download weights if missing or incomplete; allow online mode only for the download
+if ! snapshot_has_complete_weights "$MODEL_SNAPSHOT"; then
     mkdir -p "$MODEL_SNAPSHOT"
-    HF_HUB_OFFLINE=0 huggingface-cli download "$MODEL_NAME" --revision "$MODEL_REVISION" --local-dir "$MODEL_SNAPSHOT" --local-dir-use-symlinks False
+    HF_HUB_OFFLINE=0 python3 - "$MODEL_NAME" "$MODEL_REVISION" "$MODEL_SNAPSHOT" "${MODEL_INCLUDE_PATTERNS[@]}" <<'PY'
+import sys
+
+from huggingface_hub import snapshot_download
+
+repo_id = sys.argv[1]
+revision = sys.argv[2]
+local_dir = sys.argv[3]
+allow_patterns = sys.argv[4:]
+
+snapshot_download(
+    repo_id=repo_id,
+    revision=revision,
+    local_dir=local_dir,
+    allow_patterns=allow_patterns,
+)
+PY
 fi
 
-if ! ls "$MODEL_SNAPSHOT"/model-*.safetensors >/dev/null 2>&1; then
-    echo "Model files are missing under $MODEL_SNAPSHOT" >&2
+if ! snapshot_has_complete_weights "$MODEL_SNAPSHOT"; then
+    echo "Model snapshot is incomplete under $MODEL_SNAPSHOT" >&2
     exit 1
 fi
 

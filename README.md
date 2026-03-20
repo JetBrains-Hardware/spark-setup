@@ -106,7 +106,8 @@ QWEN_MAX_NUM_SEQS=96 \
 - If weights are already cached, they start with `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`.
 - If the cache is empty, they allow a first-run download automatically.
 - GPT-OSS builds a custom image before it starts the model server.
-- GPT-OSS follows the same rule for the model snapshot inside the container: download once, then force offline mode.
+- GPT-OSS follows the same rule for the model snapshot inside the container: if the pinned snapshot is missing or
+  incomplete, it repairs the cache once, then forces offline mode.
 - A fully offline GPT-OSS restart still needs a prebuilt `gpt-oss-custom:latest` image or warm Docker build layers.
 - The Nemotron reasoning parser is bundled in this repository, so a cached Nemotron launch does not need a second
   network fetch for helper code.

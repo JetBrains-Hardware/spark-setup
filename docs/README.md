@@ -52,8 +52,8 @@ The deploy script removes peer containers before startup for exactly this reason
 - Qwen and Nemotron look for cached snapshots under `~/.cache/huggingface/hub/models--*`.
 - If the snapshot exists, they default to `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`.
 - If it does not exist, they keep online access enabled so the first start can download the model.
-- GPT-OSS downloads into the mounted Hugging Face cache only when the pinned snapshot is missing, then switches
-  back to offline mode.
+- GPT-OSS downloads into the mounted Hugging Face cache only when the pinned snapshot is missing or incomplete, then
+  switches back to offline mode.
 - GPT-OSS is not fully air-gapped unless the `gpt-oss-custom:latest` image already exists or Docker can reuse its
   existing build cache.
 
