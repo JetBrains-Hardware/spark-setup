@@ -6,3 +6,6 @@
 *.log
 .cache/
 tmp/
+__pycache__/
+*.pyc
+perf-runs/

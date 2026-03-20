@@ -8,6 +8,16 @@ Export `REMOTE` before using `deploy-model.sh` or the wrapper scripts.
 export REMOTE=jetbrains@your-spark-host
 ```
 
+## First Start Downloads, Later Starts Do Not
+
+`run-qwen3.sh` and `run-nemotron3.sh` are cache-aware:
+
+- if the model snapshot already exists in `~/.cache/huggingface`, they stay offline
+- if the snapshot is missing, they allow a first-run download
+
+`run-gpt-oss.sh` is only partially offline-first: the model snapshot can come from cache, but a cold Docker image
+build still needs network access unless `gpt-oss-custom:latest` or its build layers are already present.
+
 ## SSH host key failures
 
 The scripts use `StrictHostKeyChecking=accept-new`, which accepts unknown keys but does not fix changed keys.

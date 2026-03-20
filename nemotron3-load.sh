@@ -9,8 +9,9 @@ trap 'rm -f "$RESPONSE_FILE"' EXIT
 curl -sf --max-time "$REQUEST_TIMEOUT" "http://$ENDPOINT/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "nvidia/nemotron-3-8b-chat-4k-sft",
+    "model": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
     "messages": [{"role": "user", "content": "Say the endpoint works."}],
+    "chat_template_kwargs": {"enable_thinking": false, "force_nonempty_content": true},
     "max_tokens": 64
   }' >"$RESPONSE_FILE"
 

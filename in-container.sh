@@ -1,12 +1,17 @@
 #!/bin/bash
 
-set -e -x
+set -e
+
+if [ "${DEBUG_STARTUP:-0}" = "1" ]; then
+    set -x
+fi
 
 # Model configuration - pin the version
 MODEL_NAME="${MODEL_NAME:-openai/gpt-oss-120b}"
 MODEL_REVISION="${MODEL_REVISION:-b5c939de8f754692c1647ca79fbf85e8c1e70f8a}"
 PORT="${PORT:-8001}"
 MODEL_PATH_NAME="${MODEL_NAME//\//--}"
+ENABLE_NOTIFICATIONS="${ENABLE_NOTIFICATIONS:-0}"
 
 # Force HF cache into the mounted path (see run.sh volumes)
 export HF_HOME="/hub"
@@ -22,6 +27,10 @@ MODEL_SNAPSHOT="${HF_HOME}/hub/models--${MODEL_PATH_NAME}/snapshots/${MODEL_REVI
 
 # Function to send OS notification (fails silently if no X server)
 send_notification() {
+    if [ "$ENABLE_NOTIFICATIONS" != "1" ]; then
+        return 0
+    fi
+
     local title="$1"
     local message="$2"
     local urgency="${3:-normal}"  # low, normal, critical
@@ -76,27 +85,6 @@ fi
 
 # Force offline afterwards to avoid hub calls during load
 export HF_HUB_OFFLINE=1
-
-sed -i 's~REASONING_EFFORT = ReasoningEffort.LOW~REASONING_EFFORT = "medium"~' /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/types.py
-sed -i 's~port=args.port~port=args.port, host="0.0.0.0"~' /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/serve.py
-# Increase GPU memory utilization to 0.85 while leaving some system headroom.
-# Use runai_streamer for faster model loading (parallel weight loading)
-sed -i 's/llm = LLM(/llm = LLM(\n        gpu_memory_utilization=0.85,\n        load_format="runai_streamer",/' /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/inference/vllm.py
-sed -i 's~tensor_parallel_size=TP~tensor_parallel_size=1~' /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/inference/vllm.py
-
-ensure_line_present() {
-    local line="$1"
-    local file="$2"
-
-    grep -Fqx "$line" "$file" || echo "$line" >> "$file"
-}
-
-GPT_TYPES_FILE="/usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/types.py"
-ensure_line_present '    temperature: float = 0' "$GPT_TYPES_FILE"
-ensure_line_present '    tools: list = []' "$GPT_TYPES_FILE"
-ensure_line_present '    reasoning: None = None' "$GPT_TYPES_FILE"
-ensure_line_present '    truncation: None = None' "$GPT_TYPES_FILE"
-ensure_line_present '    user: None = None' "$GPT_TYPES_FILE"
 
 # === Server loop ===
 

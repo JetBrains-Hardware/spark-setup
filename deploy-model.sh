@@ -70,6 +70,7 @@ WAIT_CMD=""
 SMOKE_CMD=""
 REMOTE_DIRS=""
 MODEL_FILES=()
+START_ENV_VARS=()
 STOP_PEER_CONTAINERS_CMD="docker rm -f \
   vllm_qwen_code gpt-oss vllm_nemotron3 \
   vllm_qwen_vl vllm_lfm flux_image comfyui_spark \
@@ -79,18 +80,29 @@ COMMON_REMOTE_DIRS="~/$REMOTE_DIR ~/.cache/huggingface ~/.cache/vllm"
 case "$MODEL_KIND" in
   qwen)
     MODEL_NAME="Qwen3-Coder-Next"
-    START_CMD="HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 bash run-qwen3.sh"
+    START_CMD="bash run-qwen3.sh"
     WAIT_CMD="curl -sf --max-time 5 http://localhost:8000/health"
     SMOKE_CMD="cd ~/$REMOTE_DIR && bash qwen3-load.sh localhost:8000 >/dev/null"
     REMOTE_DIRS="$COMMON_REMOTE_DIRS"
     MODEL_FILES=(
+      hf-cache.sh
       run-qwen3.sh
       qwen3-load.sh
+    )
+    START_ENV_VARS=(
+      HF_HUB_OFFLINE
+      TRANSFORMERS_OFFLINE
+      QWEN_ATTENTION_BACKEND
+      QWEN_GPU_MEMORY_UTILIZATION
+      QWEN_MAX_NUM_SEQS
+      QWEN_MAX_NUM_BATCHED_TOKENS
+      QWEN_BLOCK_SIZE
+      QWEN_MAX_MODEL_LEN
     )
     ;;
   gpt-oss)
     MODEL_NAME="GPT-OSS"
-    START_CMD="PORT=8001 CONTAINER_NAME=gpt-oss bash run-gpt-oss.sh"
+    START_CMD="FORCE_REBUILD=${FORCE_REBUILD:-1} PORT=8001 CONTAINER_NAME=gpt-oss bash run-gpt-oss.sh"
     WAIT_CMD="curl -sf --max-time 5 http://localhost:8001/v1/responses \
       -H 'Content-Type: application/json' \
       -d '{\"model\":\"openai/gpt-oss-120b\",\"input\":\"ping\"}'"
@@ -102,16 +114,33 @@ case "$MODEL_KIND" in
       Dockerfile.gpt-oss
       in-container.sh
     )
+    START_ENV_VARS=(
+      FORCE_REBUILD
+      ENABLE_NOTIFICATIONS
+      DEBUG_STARTUP
+    )
     ;;
   nemotron3)
-    MODEL_NAME="Nemotron 3"
+    MODEL_NAME="Nemotron 3 Super 120B"
     START_CMD="PORT=8003 CONTAINER_NAME=vllm_nemotron3 bash run-nemotron3.sh"
     WAIT_CMD="curl -sf --max-time 5 http://localhost:8003/health"
     SMOKE_CMD="cd ~/$REMOTE_DIR && bash nemotron3-load.sh localhost:8003 >/dev/null"
     REMOTE_DIRS="$COMMON_REMOTE_DIRS"
     MODEL_FILES=(
+      hf-cache.sh
       run-nemotron3.sh
       nemotron3-load.sh
+      super_v3_reasoning_parser.py
+    )
+    START_ENV_VARS=(
+      HF_HUB_OFFLINE
+      TRANSFORMERS_OFFLINE
+      NEMOTRON_GPU_MEMORY_UTILIZATION
+      NEMOTRON_ATTENTION_BACKEND
+      NEMOTRON_BLOCK_SIZE
+      NEMOTRON_MAX_NUM_BATCHED_TOKENS
+      NEMOTRON_MAX_NUM_SEQS
+      NEMOTRON_MAX_MODEL_LEN
     )
     ;;
 esac
@@ -183,14 +212,21 @@ wait_for_remote_cmd() {
 }
 
 start_model() {
-  local hf_export=""
+  local remote_exports=""
+  local env_name=""
   if [ -n "${HF_TOKEN:-}" ]; then
-    hf_export="export HF_TOKEN=$(printf '%q' "$HF_TOKEN") && "
+    remote_exports="export HF_TOKEN=$(printf '%q' "$HF_TOKEN") && "
   fi
+
+  for env_name in "${START_ENV_VARS[@]}"; do
+    if [ "${!env_name+x}" = x ]; then
+      remote_exports+="export $env_name=$(printf '%q' "${!env_name}") && "
+    fi
+  done
 
   warn_old_services
   run_cmd ssh "${SSH_OPTS[@]}" "$REMOTE" "$STOP_PEER_CONTAINERS_CMD"
-  run_cmd ssh "${SSH_OPTS[@]}" "$REMOTE" "${hf_export}cd ~/$REMOTE_DIR && $START_CMD"
+  run_cmd ssh "${SSH_OPTS[@]}" "$REMOTE" "${remote_exports}cd ~/$REMOTE_DIR && $START_CMD"
 
   wait_for_remote_cmd "$MODEL_NAME health" "$WAIT_CMD"
 

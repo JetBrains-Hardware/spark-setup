@@ -14,6 +14,35 @@ RUN apt-get update && \
     pip install --no-cache-dir gpt-oss==0.0.5 runai-model-streamer && \
     rm -rf /var/lib/apt/lists/*
 
+RUN sed -i 's~REASONING_EFFORT = ReasoningEffort.LOW~REASONING_EFFORT = "medium"~' \
+      /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/types.py && \
+    sed -i 's~port=args.port~port=args.port, host="0.0.0.0"~' \
+      /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/serve.py && \
+    sed -i 's/llm = LLM(/llm = LLM(\
+        gpu_memory_utilization=0.85,\
+        load_format="runai_streamer",/' \
+      /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/inference/vllm.py && \
+    sed -i 's~tensor_parallel_size=TP~tensor_parallel_size=1~' \
+      /usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/inference/vllm.py
+
+RUN python3 - <<'PY'
+from pathlib import Path
+
+path = Path("/usr/local/lib/python3.12/dist-packages/gpt_oss/responses_api/types.py")
+lines = path.read_text().splitlines()
+need = {
+    "    temperature: float = 0",
+    "    tools: list = []",
+    "    reasoning: None = None",
+    "    truncation: None = None",
+    "    user: None = None",
+}
+for line in need:
+    if line not in lines:
+        lines.append(line)
+path.write_text("\n".join(lines) + "\n")
+PY
+
 COPY in-container.sh /app/in-container.sh
 RUN chmod +x /app/in-container.sh
 
