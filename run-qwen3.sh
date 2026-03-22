@@ -69,7 +69,7 @@ docker run -d \
     -e HF_HUB_OFFLINE="$QWEN_HF_HUB_OFFLINE" \
     -e TRANSFORMERS_OFFLINE="$QWEN_TRANSFORMERS_OFFLINE" \
     ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
-    scitrera/dgx-spark-vllm:0.16.0-t5 \
+    scitrera/dgx-spark-vllm:0.17.0-t5 \
     vllm serve "$MODEL_NAME" \
         --port "$PORT" \
         --tensor-parallel-size 1 \
@@ -80,7 +80,6 @@ docker run -d \
         --enable-prefix-caching \
         --enable-chunked-prefill \
         --max-model-len "$QWEN_MAX_MODEL_LEN" \
-        --disable-log-requests \
         --enable-auto-tool-choice \
         --tool-call-parser qwen3_coder
 

@@ -40,7 +40,7 @@ docker run -d \
   -e HF_HUB_OFFLINE="$NEMOTRON_HF_HUB_OFFLINE" \
   -e TRANSFORMERS_OFFLINE="$NEMOTRON_TRANSFORMERS_OFFLINE" \
   ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
-  scitrera/dgx-spark-vllm:0.16.0-t5 \
+  scitrera/dgx-spark-vllm:0.17.0-t5 \
   vllm serve "$MODEL_NAME" \
     --port "$PORT" \
     --async-scheduling \
@@ -59,7 +59,6 @@ docker run -d \
     --max-num-seqs "$NEMOTRON_MAX_NUM_SEQS" \
     --max-model-len "$NEMOTRON_MAX_MODEL_LEN" \
     --trust-remote-code \
-    --disable-log-requests \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder \
     --reasoning-parser-plugin /opt/spark-setup/super_v3_reasoning_parser.py \
