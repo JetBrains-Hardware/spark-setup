@@ -199,7 +199,7 @@ copy_files() {
 wait_for_remote_cmd() {
   local name="$1"
   local cmd="$2"
-  local attempts="${3:-180}"
+  local attempts="${3:-240}"
 
   if [ "$DRY_RUN" = true ]; then
     printf '+ wait for %s using remote command: %s\n' "$name" "$cmd"
