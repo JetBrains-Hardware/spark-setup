@@ -20,8 +20,16 @@ hf_have_cached_weights() {
       continue
     fi
 
-    if [ -f "$snapshot_dir/model.safetensors.index.json" ] && [ "$shard_count" -lt 4 ]; then
-      continue
+    if [ -f "$snapshot_dir/model.safetensors.index.json" ]; then
+      local expected_shards
+      expected_shards="$(python3 -c "
+import json, sys
+with open('$snapshot_dir/model.safetensors.index.json') as f:
+    print(len(set(json.load(f)['weight_map'].values())))
+" 2>/dev/null || echo 0)"
+      if [ "${expected_shards:-0}" -gt 0 ] && [ "$shard_count" -lt "$expected_shards" ]; then
+        continue
+      fi
     fi
 
     return 0
