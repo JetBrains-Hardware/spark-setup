@@ -52,6 +52,17 @@ case "$MODEL" in
       TRANSFORMERS_OFFLINE
     )
     ;;
+  gemma4)
+    WRAPPER="$SCRIPT_DIR/deploy-gemma4.sh"
+    CAPTURE_VARS=(
+      GEMMA4_GPU_MEMORY_UTILIZATION
+      GEMMA4_MAX_NUM_SEQS
+      GEMMA4_MAX_NUM_BATCHED_TOKENS
+      GEMMA4_MAX_MODEL_LEN
+      HF_HUB_OFFLINE
+      TRANSFORMERS_OFFLINE
+    )
+    ;;
   *)
     echo "Unknown model: $MODEL" >&2
     exit 2
