@@ -15,13 +15,13 @@ DRY_RUN=false
 
 usage() {
   cat <<EOF
-Usage: REMOTE=user@host $0 <qwen|gpt-oss|nemotron3> [--copy-only] [--start-only] [--dry-run]
+Usage: REMOTE=user@host $0 <qwen|gpt-oss|nemotron3|gemma4> [--copy-only] [--start-only] [--dry-run]
 EOF
 }
 
 for arg in "$@"; do
   case "$arg" in
-    qwen|gpt-oss|nemotron3)
+    qwen|gpt-oss|nemotron3|gemma4)
       if [ -n "$MODEL_KIND" ]; then
         echo "Model already set to $MODEL_KIND" >&2
         exit 2
@@ -72,7 +72,7 @@ REMOTE_DIRS=""
 MODEL_FILES=()
 START_ENV_VARS=()
 STOP_PEER_CONTAINERS_CMD="docker rm -f \
-  vllm_qwen_code gpt-oss vllm_nemotron3 \
+  vllm_qwen_code gpt-oss vllm_nemotron3 vllm_gemma4 \
   vllm_qwen_vl vllm_lfm flux_image comfyui_spark \
   >/dev/null 2>&1 || true"
 COMMON_REMOTE_DIRS="~/$REMOTE_DIR ~/.cache/huggingface ~/.cache/vllm"
@@ -141,6 +141,26 @@ case "$MODEL_KIND" in
       NEMOTRON_MAX_NUM_BATCHED_TOKENS
       NEMOTRON_MAX_NUM_SEQS
       NEMOTRON_MAX_MODEL_LEN
+    )
+    ;;
+  gemma4)
+    MODEL_NAME="Gemma 4 31B-IT"
+    START_CMD="PORT=8004 CONTAINER_NAME=vllm_gemma4 bash run-gemma4.sh"
+    WAIT_CMD="curl -sf --max-time 5 http://localhost:8004/health"
+    SMOKE_CMD="cd ~/$REMOTE_DIR && bash gemma4-load.sh localhost:8004 >/dev/null"
+    REMOTE_DIRS="$COMMON_REMOTE_DIRS"
+    MODEL_FILES=(
+      hf-cache.sh
+      run-gemma4.sh
+      gemma4-load.sh
+    )
+    START_ENV_VARS=(
+      HF_HUB_OFFLINE
+      TRANSFORMERS_OFFLINE
+      GEMMA4_GPU_MEMORY_UTILIZATION
+      GEMMA4_MAX_NUM_SEQS
+      GEMMA4_MAX_NUM_BATCHED_TOKENS
+      GEMMA4_MAX_MODEL_LEN
     )
     ;;
 esac

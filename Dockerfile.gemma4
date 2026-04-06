@@ -1,0 +1,8 @@
+FROM scitrera/dgx-spark-vllm:0.17.0-t5
+
+# Gemma 4 requires bleeding-edge transformers (layer_scalar parameter support)
+RUN pip install --no-cache-dir git+https://github.com/huggingface/transformers.git
+
+# Patch vLLM weight loader to skip unknown weights (layer_scalar) instead of crashing.
+COPY patch-vllm-loader.py /tmp/patch-vllm-loader.py
+RUN python3 /tmp/patch-vllm-loader.py && rm /tmp/patch-vllm-loader.py
