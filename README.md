@@ -5,10 +5,12 @@ Compact setup and deploy scripts for running vLLM-based models on NVIDIA DGX Spa
 This repository is intentionally narrow:
 
 - Qwen3-Coder-Next on vLLM
+- Qwen3.6-27B-FP8 on vLLM (with optional MTP speculative decoding)
 - GPT-OSS 120B with the Responses API
 - Nemotron 3 Super 120B NVFP4 on vLLM
 - simple remote deploy wrappers
 - smoke-test scripts for each model
+- llama-benchy harness for repeatable perf comparisons
 
 It does not include private demo code, dashboard apps, or internal JetBrains integrations.
 
@@ -26,7 +28,7 @@ It does not include private demo code, dashboard apps, or internal JetBrains int
 export REMOTE=jetbrains@your-spark-host
 export HF_TOKEN=hf_...
 
-./deploy-model.sh <qwen|gpt-oss|nemotron3>
+./deploy-model.sh <qwen|qwen36|gpt-oss|nemotron3|gemma4>
 ```
 
 Run exactly one large model at a time. DGX Spark has 128 GB of unified memory, so these deployments are mutually
@@ -36,6 +38,7 @@ Model-specific wrappers forward the same flags:
 
 ```bash
 ./deploy-qwen3.sh --dry-run
+./deploy-qwen36.sh --start-only
 ./deploy-gpt-oss.sh --copy-only
 ./deploy-nemotron3.sh --start-only
 ```
@@ -45,6 +48,7 @@ Model-specific wrappers forward the same flags:
 | Deploy key  | Default model                                     | Port | Params / format            | Spark memory note                                      | Sources                           |
 |-------------|---------------------------------------------------|------|----------------------------|--------------------------------------------------------|-----------------------------------|
 | `qwen`      | `Qwen/Qwen3-Coder-Next-FP8`                       | 8000 | 80B total, 3B active, FP8 | Repo caps vLLM at 75% of Spark memory, about 96 GB     | [1](#sources), [2](#sources), [3](#sources) |
+| `qwen36`    | `Qwen/Qwen3.6-27B-FP8`                            | 8005 | 27B dense, FP8            | 0.80 memory cap; weights ~27 GB. Optional MTP speculative decoding via `QWEN36_NUM_SPECULATIVE_TOKENS=1` (+63% decode tps on GB10) | [1](#sources), [9](#sources), [10](#sources) |
 | `gpt-oss`   | `openai/gpt-oss-120b`                             | 8001 | 117B total, 5.1B active, MXFP4 | NVIDIA recommends 70 GB free for the 120B path     | [1](#sources), [4](#sources), [5](#sources) |
 | `nemotron3` | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | 8003 | 120B total, 12B active, NVFP4 | Official recipe uses 90% memory; Spark vLLM docs list 120B Nemotron support | [1](#sources), [6](#sources), [7](#sources), [8](#sources) |
 
@@ -89,7 +93,28 @@ NEMOTRON_GPU_MEMORY_UTILIZATION=0.88 \
 NEMOTRON_MAX_NUM_BATCHED_TOKENS=12288 \
 NEMOTRON_MAX_NUM_SEQS=384 \
 ./deploy-nemotron3.sh
+
+# Qwen3.6-27B-FP8 (MTP speculative decoding + KV cache toggle)
+QWEN36_NUM_SPECULATIVE_TOKENS=1 \
+QWEN36_GPU_MEMORY_UTILIZATION=0.80 \
+QWEN36_MAX_MODEL_LEN=65536 \
+QWEN36_MAX_NUM_SEQS=32 \
+QWEN36_KV_CACHE_DTYPE=auto \
+./deploy-qwen36.sh
 ```
+
+### Qwen3.6 MTP behavior (measured on GB10, vLLM 0.17.1.dev)
+
+| `QWEN36_NUM_SPECULATIVE_TOKENS` | Single-stream tg | Aggregate tg @ c=8 | Stability       |
+|---------------------------------|------------------|--------------------|-----------------|
+| `0` (off)                       | 7.75 t/s         | 57.5 t/s           | rock-solid      |
+| `1`                             | **12.6 t/s**     | **87.2 t/s**       | **rock-solid**  |
+| `2`                             | 14.1 t/s         | crashes at c=8     | unstable        |
+| `3`                             | 14.2 t/s peak 20 | crashes at c=1     | unstable        |
+
+`1` is the production-stable winner. Higher values give more peak speed but the engine hits `cudaErrorIllegalAddress` under load — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+`QWEN36_KV_CACHE_DTYPE=fp8` is wired up but did **not** improve tps at depths up to 32k on this image; treat it as a memory knob, not a speed knob.
 
 For repeated tuning passes, log each run instead of editing shell history:
 
@@ -99,6 +124,28 @@ QWEN_GPU_MEMORY_UTILIZATION=0.78 \
 QWEN_MAX_NUM_SEQS=96 \
 ./perf-iteration.sh qwen iter-01
 ```
+
+## Benchmarking with llama-benchy
+
+`bench-qwen36.sh` wraps three `llama-benchy` profiles for repeatable comparisons:
+
+| Profile      | What it measures                                              |
+|--------------|---------------------------------------------------------------|
+| `decode`     | single-stream `tg256` at `pp=512, c=1, d=0` (interactive)     |
+| `throughput` | aggregate t/s at concurrency `1, 4, 8` (server load)          |
+| `longctx`    | TTFT and decode at depths `0, 8192, 32768` (repo-level prompts) |
+
+Run on the Spark itself (LAN latency distorts TTFT):
+
+```bash
+ssh spark-05
+cd ~/spark-setup
+uv pip install -U --system llama-benchy   # or: pip install --user --break-system-packages -U llama-benchy
+bash bench-qwen36.sh all baseline          # writes perf-runs/qwen36-bench-baseline/
+bash bench-qwen36.sh decode mtp1           # single profile, custom label
+```
+
+Results land under `~/spark-setup/perf-runs/qwen36-bench-<label>/{decode,throughput,longctx}.log`.
 
 ## Caches and Cold Starts
 
@@ -159,3 +206,5 @@ Apache License 2.0. See [`LICENSE`](LICENSE).
 6. [NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4)
 7. [Bundled `super_v3` reasoning parser used by the Nemotron launcher](super_v3_reasoning_parser.py)
 8. [NVIDIA DGX Spark `vLLM for Inference` support matrix](https://build.nvidia.com/spark/vllm)
+9. [Qwen3.6-27B-FP8 model card](https://huggingface.co/Qwen/Qwen3.6-27B-FP8)
+10. [vLLM recipe for Qwen3.6-27B (MTP, reasoning parser)](https://recipes.vllm.ai/Qwen/Qwen3.6-27B)

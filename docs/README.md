@@ -18,6 +18,15 @@ The deploy scripts assume:
 - starts offline automatically when a cached snapshot already exists
 - tuned for the larger coder workload and longer context
 
+### Qwen3.6
+
+- starts on `:8005`
+- serves OpenAI chat completions, reasoning content via `--reasoning-parser qwen3`
+- uses the dense FP8 checkpoint `Qwen/Qwen3.6-27B-FP8`
+- follows the official vLLM recipe (`--max-model-len 262144 --reasoning-parser qwen3 --enable-prefix-caching`)
+- ships native MTP (multi-token-prediction) heads — opt in via `QWEN36_NUM_SPECULATIVE_TOKENS=1`; no separate draft model needed
+- offline-cache-aware via the same `hf-cache.sh` helper as Qwen and Nemotron
+
 ### GPT-OSS
 
 - starts on `:8001`
@@ -42,6 +51,7 @@ not meant to stay resident together.
 | Model      | Why it is large on Spark                                                             |
 |------------|--------------------------------------------------------------------------------------|
 | Qwen       | `Qwen3-Coder-Next-FP8` is an 80B MoE model, and this repo gives vLLM 75% of memory |
+| Qwen3.6    | `Qwen3.6-27B-FP8` weights are ~27 GB; KV cache eats the rest. Default budget 80%. |
 | GPT-OSS    | NVIDIA recommends at least 70 GB free for `gpt-oss:120b`                            |
 | Nemotron 3 | The official NVFP4 recipe already budgets 90% GPU memory and the Spark vLLM matrix lists 120B Nemotron support |
 
@@ -68,14 +78,21 @@ Use env overrides instead of editing the launchers for each performance pass:
 - Nemotron: `NEMOTRON_GPU_MEMORY_UTILIZATION`, `NEMOTRON_MAX_NUM_BATCHED_TOKENS`,
   `NEMOTRON_MAX_NUM_SEQS`, `NEMOTRON_BLOCK_SIZE`, `NEMOTRON_MAX_MODEL_LEN`,
   `NEMOTRON_ATTENTION_BACKEND`
+- Qwen3.6: `QWEN36_GPU_MEMORY_UTILIZATION`, `QWEN36_MAX_NUM_SEQS`,
+  `QWEN36_MAX_NUM_BATCHED_TOKENS`, `QWEN36_BLOCK_SIZE`, `QWEN36_MAX_MODEL_LEN`,
+  `QWEN36_ATTENTION_BACKEND`,
+  `QWEN36_NUM_SPECULATIVE_TOKENS` (`0` off; `1` is the production-stable default — see README perf table),
+  `QWEN36_KV_CACHE_DTYPE` (`auto`/`fp8`)
 
 ## Peer Cleanup
 
 `deploy-model.sh` removes known peer model containers before start:
 
 - `vllm_qwen_code`
+- `vllm_qwen36`
 - `gpt-oss`
 - `vllm_nemotron3`
+- `vllm_gemma4`
 - `vllm_qwen_vl`
 - `vllm_lfm`
 - `flux_image`
@@ -93,3 +110,54 @@ The deploy script warns if it finds these running systemd units:
 - `gpt-oss-server`
 
 If one of them is enabled, it can respawn a container after the deploy script removes it.
+
+## Speculative Decoding (Qwen3.6 MTP)
+
+Qwen3.6 ships native multi-token-prediction heads, so speculative decoding does not need a separate
+draft model. `run-qwen36.sh` translates `QWEN36_NUM_SPECULATIVE_TOKENS` into:
+
+```
+--speculative-config '{"method":"mtp","num_speculative_tokens":N}'
+```
+
+Measured on `spark-05` with vLLM `0.17.1.dev0` (NVIDIA GB10):
+
+- `N=1` is stable across `c=1,4,8` and gives roughly +63% single-stream decode tps.
+- `N=2` is fastest at low concurrency but the engine hits `cudaErrorIllegalAddress` at `c=8`.
+- `N=3` crashes even at `c=1` mid-run. Not safe.
+
+Production picks `N=1`. Higher values are useful for offline single-stream experiments.
+Re-evaluate when the vLLM image is upgraded — the crash is a vLLM/MTP bug on this build, not a fundamental Qwen3.6 limit.
+
+## Compact KV Cache
+
+`QWEN36_KV_CACHE_DTYPE=fp8` is wired up but, on the current image and at depths up to 32 k,
+did not change tps within noise. It is a memory knob (cuts KV cache footprint roughly in half),
+not a speed knob. Reach for it when long-context (>64 k) deployments run out of headroom.
+
+**TurboQuant KV-cache compression** ([ICLR 2026](https://arxiv.org/abs/2504.19874)) is
+**not currently usable with vLLM on Spark**:
+
+- The PyPI `turboquant 0.2.0` package targets HuggingFace `model.generate(past_key_values=...)`,
+  which vLLM bypasses entirely.
+- The community vLLM-integration fork (`0xSero/turboquant`) requires vLLM `0.18.0`; the pinned image is `0.17.1.dev0`.
+- The fork's monkey-patch explicitly skips Mamba/linear-attention layers and warns that
+  2-bit values cause `cos_sim ≈ 0.94` quality drift.
+
+Re-attempt once the image moves to vLLM `0.18+` and only after measuring quality regression
+on Qwen3.6 outputs.
+
+## Benchmarking
+
+`bench-qwen36.sh` runs `llama-benchy` against the local endpoint:
+
+- `decode` profile — single-stream (`c=1`, `pp=512`, `tg=256`)
+- `throughput` profile — concurrency `1, 4, 8` (`pp=1024`, `tg=256`)
+- `longctx` profile — depth `0, 8192, 32768` (`pp=512`, `tg=32`)
+- `all` runs the three sequentially
+
+Run on the Spark itself; LAN latency inflates `ttfr` and `e2e_ttft`.
+Outputs land under `~/spark-setup/perf-runs/qwen36-bench-<label>/`.
+
+`llama-benchy` defaults to downloading `gpt2` for token counting. The harness sets
+`HF_HUB_OFFLINE=1` and passes `--tokenizer "$MODEL"` so it reuses the served model's cached tokenizer.

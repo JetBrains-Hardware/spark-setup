@@ -6,7 +6,7 @@ MODEL="${1:-}"
 ITERATION_NAME="${2:-}"
 
 if [ -z "$MODEL" ] || [ -z "$ITERATION_NAME" ]; then
-  echo "Usage: REMOTE=user@host $0 <qwen|gpt-oss|nemotron3> <iteration-name> [deploy flags...]" >&2
+  echo "Usage: REMOTE=user@host $0 <qwen|qwen36|gpt-oss|nemotron3|gemma4> <iteration-name> [deploy flags...]" >&2
   exit 2
 fi
 
@@ -27,6 +27,21 @@ case "$MODEL" in
       QWEN_MAX_NUM_BATCHED_TOKENS
       QWEN_BLOCK_SIZE
       QWEN_MAX_MODEL_LEN
+      HF_HUB_OFFLINE
+      TRANSFORMERS_OFFLINE
+    )
+    ;;
+  qwen36)
+    WRAPPER="$SCRIPT_DIR/deploy-qwen36.sh"
+    CAPTURE_VARS=(
+      QWEN36_ATTENTION_BACKEND
+      QWEN36_GPU_MEMORY_UTILIZATION
+      QWEN36_MAX_NUM_SEQS
+      QWEN36_MAX_NUM_BATCHED_TOKENS
+      QWEN36_BLOCK_SIZE
+      QWEN36_MAX_MODEL_LEN
+      QWEN36_NUM_SPECULATIVE_TOKENS
+      QWEN36_KV_CACHE_DTYPE
       HF_HUB_OFFLINE
       TRANSFORMERS_OFFLINE
     )
