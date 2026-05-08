@@ -116,6 +116,36 @@ QWEN36_KV_CACHE_DTYPE=auto \
 
 `QWEN36_KV_CACHE_DTYPE=fp8` is wired up but did **not** improve tps at depths up to 32k on this image; treat it as a memory knob, not a speed knob.
 
+### Bare-metal Qwen3.6 (vLLM 0.20.1, optional)
+
+For 200k+ contexts the Docker image (`vLLM 0.17.1.dev`) is too old. `run-qwen36-bare.sh` runs vLLM 0.20.1 directly from a venv on the Spark, on **port 8006** (so it can run alongside the Docker version on `:8005`):
+
+```bash
+# One-time install on the Spark
+ssh spark-05
+sudo apt-get install -y python3.12-dev build-essential ninja-build
+python3 -m venv ~/spark-setup-baremetal/.venv
+~/spark-setup-baremetal/.venv/bin/pip install -U vllm==0.20.1
+
+# Launch — defaults to MTP=1, full 256k context, FP8 KV cache
+QWEN36_BARE_NUM_SPECULATIVE_TOKENS=1 \
+QWEN36_BARE_KV_CACHE_DTYPE=fp8 \
+QWEN36_BARE_MAX_MODEL_LEN=262144 \
+QWEN36_BARE_GPU_MEMORY_UTILIZATION=0.85 \
+bash run-qwen36-bare.sh
+```
+
+Long-context single-stream numbers (Spark GB10, vLLM 0.20.1, MTP=1, FP8 KV):
+
+| Context depth | Prefill t/s | Decode tg t/s | TTFT       |
+|--------------:|------------:|--------------:|-----------:|
+|             0 |        1223 |    14.46      |   0.4 s    |
+|           64k |         753 |    14.09      |    88 s    |
+|          128k |         624 |    13.77      |   211 s    |
+|        **200k** |     **531** | **13.48**   | **378 s**  |
+
+Decode rate degrades only **−7% from d=0 to d=200k** thanks to FP8 KV. Prefill drops sub-linearly (expected). At d=200k a fresh prompt takes ~6.3 minutes one-shot; once cached, decode runs at ~13.5 t/s per request. Pre-flight: install `python3.12-dev`, `build-essential`, and `ninja-build` (FlashInfer JIT-compiles attention kernels on first request).
+
 For repeated tuning passes, log each run instead of editing shell history:
 
 ```bash
@@ -165,7 +195,10 @@ Results land under `~/spark-setup/perf-runs/qwen36-bench-<label>/{decode,through
 - `deploy-*.sh`: model-specific wrappers
 - `hf-cache.sh`: shared Hugging Face cache probe helper
 - `perf-iteration.sh`: logs one tuning pass under `perf-runs/`
-- `run-*.sh`: remote container launchers
+- `run-*.sh`: remote container launchers (Docker)
+- `run-qwen36-bare.sh`: bare-metal vLLM 0.20.1 launcher for 200k+ contexts (no Docker)
+- `bench-qwen36.sh`: llama-benchy harness with `decode` / `throughput` / `longctx` / `huge` profiles
+- `tq-serve.py`: TurboQuant + vLLM wrapper (currently non-functional — see `docs/README.md`)
 - `*-load.sh`: smoke tests
 - `Dockerfile.gpt-oss` and `in-container.sh`: GPT-OSS image build and runtime entrypoint
 - [`docs/README.md`](docs/README.md): deployment notes and behavior differences

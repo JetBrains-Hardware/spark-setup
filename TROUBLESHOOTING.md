@@ -121,6 +121,21 @@ upgraded — this looks like a bug in vLLM's MTP path on this build, not a Qwen3
 Once the engine has crashed, `/health` may still return 200 but every completion request returns HTTP 500.
 Recovery: `docker rm -f vllm_qwen36 && cd ~/spark-setup && QWEN36_NUM_SPECULATIVE_TOKENS=1 bash run-qwen36.sh`.
 
+## Bare-metal vLLM crashes on first request: `FileNotFoundError: 'ninja'`
+
+FlashInfer JIT-compiles attention kernels on first inference. It needs the system `ninja` build
+tool, not the Python `ninja` package alone (subprocess from FlashInfer doesn't always inherit the
+venv `bin/`).
+
+Install once on the Spark:
+
+```bash
+sudo apt-get install -y python3.12-dev build-essential ninja-build
+```
+
+The `python3.12-dev` and `build-essential` are also needed because `fastsafetensors` (a vLLM dep)
+ships only an aarch64 sdist and builds from source.
+
 ## llama-benchy tries to download `gpt2`
 
 llama-benchy defaults to `gpt2` for token counting. On a fresh Spark this fails (no `HF_TOKEN` for the

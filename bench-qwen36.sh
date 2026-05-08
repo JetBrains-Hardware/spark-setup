@@ -10,17 +10,18 @@ set -euo pipefail
 # Profiles:
 #   decode     — single-stream tg @ depth=0 (interactive responsiveness)
 #   throughput — aggregate t/s @ concurrency 1/4/8 (server load)
-#   longctx    — TTFT @ depth 0 / 8k / 32k / 65k (repo-level prompts)
-#   all        — run all three sequentially
+#   longctx    — TTFT @ depth 0 / 8k / 32k (repo-level prompts)
+#   huge       — TTFT @ depth 0 / 64k / 131k / 200k (200k+ context, needs KV-compact run)
+#   all        — run decode + throughput + longctx (skips huge — opt-in)
 #
 # Usage:
-#   bash bench-qwen36.sh <decode|throughput|longctx|all> [iteration-name]
+#   bash bench-qwen36.sh <decode|throughput|longctx|huge|all> [iteration-name]
 
 PROFILE="${1:-}"
 ITER="${2:-$(date -u +%Y%m%d-%H%M%S)}"
 
 if [ -z "$PROFILE" ]; then
-  echo "Usage: $0 <decode|throughput|longctx|all> [iteration-name]" >&2
+  echo "Usage: $0 <decode|throughput|longctx|huge|all> [iteration-name]" >&2
   exit 2
 fi
 
@@ -91,10 +92,24 @@ longctx_profile() {
     --latency-mode generation
 }
 
+huge_profile() {
+  run_one huge \
+    --base-url "$ENDPOINT" \
+    --model "$MODEL" \
+    --tokenizer "$TOKENIZER" \
+    --pp 256 \
+    --tg 16 \
+    --depth 0 65536 131072 200000 \
+    --runs 2 \
+    --concurrency 1 \
+    --latency-mode generation
+}
+
 case "$PROFILE" in
   decode)     decode_profile ;;
   throughput) throughput_profile ;;
   longctx)    longctx_profile ;;
+  huge)       huge_profile ;;
   all)        decode_profile; throughput_profile; longctx_profile ;;
   *) echo "Unknown profile: $PROFILE" >&2; exit 2 ;;
 esac

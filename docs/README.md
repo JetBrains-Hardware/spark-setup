@@ -111,6 +111,34 @@ The deploy script warns if it finds these running systemd units:
 
 If one of them is enabled, it can respawn a container after the deploy script removes it.
 
+## Bare-metal vLLM (200k+ context)
+
+For 256 k-context deployments the Docker image's `vLLM 0.17.1.dev` is too old to keep up. The
+`run-qwen36-bare.sh` launcher runs vLLM 0.20.1 directly from a venv on Spark, on **port 8006**,
+and is the recommended path when long context matters.
+
+Install once on the Spark:
+
+```bash
+sudo apt-get install -y python3.12-dev build-essential ninja-build
+python3 -m venv ~/spark-setup-baremetal/.venv
+~/spark-setup-baremetal/.venv/bin/pip install -U vllm==0.20.1
+```
+
+Production launch (MTP=1 + FP8 KV + full 256 k context, validated stable on GB10):
+
+```bash
+QWEN36_BARE_NUM_SPECULATIVE_TOKENS=1 \
+QWEN36_BARE_KV_CACHE_DTYPE=fp8 \
+QWEN36_BARE_MAX_MODEL_LEN=262144 \
+QWEN36_BARE_GPU_MEMORY_UTILIZATION=0.85 \
+bash run-qwen36-bare.sh
+```
+
+The launcher writes its log to `~/spark-setup-baremetal/vllm.log` and PID to
+`~/spark-setup-baremetal/vllm.pid`. Restarting it kills the previous listener on the configured
+port automatically.
+
 ## Speculative Decoding (Qwen3.6 MTP)
 
 Qwen3.6 ships native multi-token-prediction heads, so speculative decoding does not need a separate
@@ -129,23 +157,60 @@ Measured on `spark-05` with vLLM `0.17.1.dev0` (NVIDIA GB10):
 Production picks `N=1`. Higher values are useful for offline single-stream experiments.
 Re-evaluate when the vLLM image is upgraded — the crash is a vLLM/MTP bug on this build, not a fundamental Qwen3.6 limit.
 
+### DFlash (block-diffusion drafter) — blocked on HF access
+
+`z-lab/Qwen3.6-27B-DFlash` is a published draft model for Qwen3.6-27B that uses a block-diffusion
+drafter (the user's "DTree" from the original ask). Setup requires:
+
+1. **HuggingFace access grant** — the repo is gated. Visit
+   <https://huggingface.co/z-lab/Qwen3.6-27B-DFlash>, click "Request access", wait for approval.
+   Without it, `vllm serve` exits with `OSError: ... Cannot access gated repo ...`.
+2. **vLLM from PR #40898** (interleaved SWA support, not yet merged):
+   ```bash
+   ~/spark-setup-baremetal/dflash/.venv/bin/pip install -U \
+     "vllm @ git+https://github.com/vllm-project/vllm.git@refs/pull/40898/head"
+   ```
+3. Launch with the DFlash speculative config:
+   ```bash
+   QWEN36_BARE_VENV=~/spark-setup-baremetal/dflash/.venv \
+   QWEN36_BARE_DRAFT_METHOD=dflash \
+   QWEN36_BARE_DRAFT_MODEL=z-lab/Qwen3.6-27B-DFlash \
+   QWEN36_BARE_NUM_SPECULATIVE_TOKENS=15 \
+   QWEN36_BARE_ATTENTION_BACKEND=FLASH_ATTN \
+   QWEN36_BARE_MAX_NUM_BATCHED_TOKENS=32768 \
+   bash run-qwen36-bare.sh
+   ```
+
+Compatibility with the FP8 base is unverified by the model's authors (their card shows BF16 target).
+If FP8 fails, fall back to `MODEL_NAME=Qwen/Qwen3.6-27B` (BF16, ~54 GB) — fits Spark but cuts KV
+headroom.
+
 ## Compact KV Cache
 
-`QWEN36_KV_CACHE_DTYPE=fp8` is wired up but, on the current image and at depths up to 32 k,
+`QWEN36_KV_CACHE_DTYPE=fp8` is wired up but, on the Docker image and at depths up to 32 k,
 did not change tps within noise. It is a memory knob (cuts KV cache footprint roughly in half),
-not a speed knob. Reach for it when long-context (>64 k) deployments run out of headroom.
+not a speed knob at short context.
+
+**It does help at long context** — measured on bare-metal vLLM 0.20.1, FP8 KV held single-stream decode
+at 13.5 t/s up to 200 k tokens (only −7% vs depth 0). Without it, the KV memory at 256 k context
+exceeds practical headroom on Spark's 128 GB unified memory.
 
 **TurboQuant KV-cache compression** ([ICLR 2026](https://arxiv.org/abs/2504.19874)) is
 **not currently usable with vLLM on Spark**:
 
 - The PyPI `turboquant 0.2.0` package targets HuggingFace `model.generate(past_key_values=...)`,
   which vLLM bypasses entirely.
-- The community vLLM-integration fork (`0xSero/turboquant`) requires vLLM `0.18.0`; the pinned image is `0.17.1.dev0`.
+- The community vLLM-integration fork (`0xSero/turboquant`) had bugs we patched in place
+  (`import os` missing; `_update_hybrid_attention_mamba_layout` signature outdated for vLLM 0.20),
+  but ultimately hits a wall at first inference:
+  `RuntimeError: Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned`.
+  Fork's hot path does an unpinned CPU↔CUDA copy that vLLM 0.20's CUDA-graph capture forbids.
+  Workaround would be `--enforce-eager` (kills the perf benefit) or patching the fork's tensor allocations.
 - The fork's monkey-patch explicitly skips Mamba/linear-attention layers and warns that
   2-bit values cause `cos_sim ≈ 0.94` quality drift.
 
-Re-attempt once the image moves to vLLM `0.18+` and only after measuring quality regression
-on Qwen3.6 outputs.
+Re-attempt when either NVIDIA fixes the eager-mode regression upstream, or a fork with proper
+pinned-memory handling shows up. For now FP8 KV is the practical compact-KV option.
 
 ## Benchmarking
 
