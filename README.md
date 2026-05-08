@@ -202,6 +202,7 @@ Results land under `~/spark-setup/perf-runs/qwen36-bench-<label>/{decode,through
 - `*-load.sh`: smoke tests
 - `Dockerfile.gpt-oss` and `in-container.sh`: GPT-OSS image build and runtime entrypoint
 - [`docs/README.md`](docs/README.md): deployment notes and behavior differences
+- [`docs/perf-log.md`](docs/perf-log.md): full experiment log — every config, every measurement, every decision
 - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md): common failure modes
 - [`examples/README.md`](examples/README.md): minimal config examples
 
