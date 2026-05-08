@@ -147,7 +147,8 @@ Reported numbers (Qwen3-Coder-30B-A3B HumanEval, T=0): **DFlash 6.09× / DDTree 
 | 8 | Rebuild #1 (`--no-build-isolation`) | Failed: `ModuleNotFoundError: setuptools_scm`. |
 | 9 | Pre-installed `setuptools_scm`, rebuild #2 | Failed: `ModuleNotFoundError: pybind11` (transitive `fastsafetensors` build dep). |
 | 10 | Pre-installed `pybind11`, rebuild #3/#4 | Compiled most kernels for sm_121, then failed at `nvfp4_kv_cache_kernels.cu`: `ptxas error: Instruction 'cvt with .e2m1x2' not supported on .target 'sm_121'`. The `cvt.e2m1x2` (NVFP4 conversion) PTX is sm_120-only; vLLM's `cuda_archs_loose_intersection` family-fallback for `12.0f` was matching sm_121. |
-| 11 | Patched `vllm-src/CMakeLists.txt` to drop `12.1a` from the SM120 FP4 path and replace `12.0f` with `12.0` (no family fallback). Now rebuilding from local patched source. | In flight at the time of writing. |
+| 11 | Patched `vllm-src/CMakeLists.txt`: SM120 FP4 src list `12.0f` → `12.0`, dropped `12.1a`. Rebuilt from local source. | Failed: `cuda_archs_loose_intersection` is **forward-compatible within major version** — `SRC=12.0` still matched `TGT=12.1` (same major 12, 12.0 ≤ 12.1). Build still emitted `nvfp4_kv_cache_kernels.cu` for `arch=compute_120,code=sm_120`. ptxas still rejects `cvt.e2m1x2` (sm_120 PTX not supported even though target says sm_120 — driver toolkit mismatch). |
+| 12 | Patched the SM120 NVFP4 block's `if(... AND FP4_ARCHS)` → `if(FALSE)` to disable it entirely. cache_kernels.cu's NVFP4 calls are gated by `ENABLE_NVFP4_SM100\|SM120` macros which won't be defined now. User does not want NVFP4 anyway. Rebuild #6 in flight. | Pending. |
 
 ### Open decisions
 
