@@ -144,7 +144,10 @@ Reported numbers (Qwen3-Coder-30B-A3B HumanEval, T=0): **DFlash 6.09× / DDTree 
 | 5 | Launch with FP8 base + DFlash drafter | Engine init crashed: `RuntimeError: cutlass_scaled_mm ... NotImplementedError: No compiled cutlass_scaled_mm for a compute capability less than CUDA device capability: 121`. The PR's wheel was compiled without sm_121 in `TORCH_CUDA_ARCH_LIST`. |
 | 6 | Source-rebuild attempt #1 (`--no-build-isolation`) | `ModuleNotFoundError: setuptools_scm`. Installed it. |
 | 7 | Rebuild #2 | `ModuleNotFoundError: pybind11` (transitive `fastsafetensors` build dep). Installed it. |
-| 8 | Rebuild #3 (in flight at time of writing) | Running with `TORCH_CUDA_ARCH_LIST=12.1+PTX MAX_JOBS=4`. ETA 30–60 min on aarch64. |
+| 8 | Rebuild #1 (`--no-build-isolation`) | Failed: `ModuleNotFoundError: setuptools_scm`. |
+| 9 | Pre-installed `setuptools_scm`, rebuild #2 | Failed: `ModuleNotFoundError: pybind11` (transitive `fastsafetensors` build dep). |
+| 10 | Pre-installed `pybind11`, rebuild #3/#4 | Compiled most kernels for sm_121, then failed at `nvfp4_kv_cache_kernels.cu`: `ptxas error: Instruction 'cvt with .e2m1x2' not supported on .target 'sm_121'`. The `cvt.e2m1x2` (NVFP4 conversion) PTX is sm_120-only; vLLM's `cuda_archs_loose_intersection` family-fallback for `12.0f` was matching sm_121. |
+| 11 | Patched `vllm-src/CMakeLists.txt` to drop `12.1a` from the SM120 FP4 path and replace `12.0f` with `12.0` (no family fallback). Now rebuilding from local patched source. | In flight at the time of writing. |
 
 ### Open decisions
 
