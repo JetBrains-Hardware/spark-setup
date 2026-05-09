@@ -148,7 +148,16 @@ Reported numbers (Qwen3-Coder-30B-A3B HumanEval, T=0): **DFlash 6.09× / DDTree 
 | 9 | Pre-installed `setuptools_scm`, rebuild #2 | Failed: `ModuleNotFoundError: pybind11` (transitive `fastsafetensors` build dep). |
 | 10 | Pre-installed `pybind11`, rebuild #3/#4 | Compiled most kernels for sm_121, then failed at `nvfp4_kv_cache_kernels.cu`: `ptxas error: Instruction 'cvt with .e2m1x2' not supported on .target 'sm_121'`. The `cvt.e2m1x2` (NVFP4 conversion) PTX is sm_120-only; vLLM's `cuda_archs_loose_intersection` family-fallback for `12.0f` was matching sm_121. |
 | 11 | Patched `vllm-src/CMakeLists.txt`: SM120 FP4 src list `12.0f` → `12.0`, dropped `12.1a`. Rebuilt from local source. | Failed: `cuda_archs_loose_intersection` is **forward-compatible within major version** — `SRC=12.0` still matched `TGT=12.1` (same major 12, 12.0 ≤ 12.1). Build still emitted `nvfp4_kv_cache_kernels.cu` for `arch=compute_120,code=sm_120`. ptxas still rejects `cvt.e2m1x2` (sm_120 PTX not supported even though target says sm_120 — driver toolkit mismatch). |
-| 12 | Patched the SM120 NVFP4 block's `if(... AND FP4_ARCHS)` → `if(FALSE)` to disable it entirely. cache_kernels.cu's NVFP4 calls are gated by `ENABLE_NVFP4_SM100\|SM120` macros which won't be defined now. User does not want NVFP4 anyway. Rebuild #6 in flight. | Pending. |
+| 12 | Patched the SM120 NVFP4 block's `if(... AND FP4_ARCHS)` → `if(FALSE)` to disable it entirely. cache_kernels.cu's NVFP4 calls are gated by `ENABLE_NVFP4_SM100\|SM120` macros which won't be defined now. User does not want NVFP4 anyway. | Failed at a *different* file: `qutlass-src/.../fused_quantize_nv.cu` hits the same `cvt with .e2m1x2 not supported on sm_121` ptxas error. The `cvt.e2m1x2` PTX is hardware-restricted to **sm_120/sm_100 (datacenter Blackwell)** and is **not supported on sm_121 (GB10/Spark)**. Every FP4-emitting file in PR #40898 + bundled qutlass dep will surface the same wall. |
+
+### Verdict
+
+**DFlash on FP8 base is hardware-blocked on DGX Spark today.** PR #40898 (and its `qutlass` bundled dep) emit `cvt.e2m1x2` PTX which sm_121 doesn't support. Patching out every FP4 path across vLLM and `qutlass` would be hours of work with no guarantee. Two real paths forward:
+
+1. **Wait for PR #40898 to be properly merged into a stable vLLM that ships sm_121-compiled wheels** — the cleanest path, no extra work.
+2. **Use the BF16 base (`Qwen/Qwen3.6-27B`, ~54 GB)** to side-step the FP8 cutlass + FP4 PTX paths. Breaks the user's "FP8 only" preference. Only use as fallback.
+
+Pivoting back to the **production-stable bare-metal config (MTP=1 + FP8 KV + 256k)** as the baseline for the 5 optimization loops.
 
 ### Open decisions
 
