@@ -127,24 +127,24 @@ sudo apt-get install -y python3.12-dev build-essential ninja-build
 python3 -m venv ~/spark-setup-baremetal/.venv
 ~/spark-setup-baremetal/.venv/bin/pip install -U vllm==0.20.1
 
-# Launch — defaults to MTP=1, full 256k context, FP8 KV cache
-QWEN36_BARE_NUM_SPECULATIVE_TOKENS=1 \
-QWEN36_BARE_KV_CACHE_DTYPE=fp8 \
-QWEN36_BARE_MAX_MODEL_LEN=262144 \
-QWEN36_BARE_GPU_MEMORY_UTILIZATION=0.85 \
+# Launch — script defaults are the production-tuned config:
+#   MTP=1, KV=fp8, max-model-len=262144, block-size=32, mnbt=16384,
+#   FLASH_ATTN backend, gpu-mem-util=0.85
 bash run-qwen36-bare.sh
 ```
 
-Long-context single-stream numbers (Spark GB10, vLLM 0.20.1, MTP=1, FP8 KV):
+Override any default via `QWEN36_BARE_*` env vars (see the script header). The defaults came out of a tuned 5-loop sweep — see [`docs/perf-log.md`](docs/perf-log.md) Phase 7.
+
+Long-context single-stream numbers (Spark GB10, vLLM 0.20.1, MTP=1, FP8 KV, **tuned defaults**):
 
 | Context depth | Prefill t/s | Decode tg t/s | TTFT       |
 |--------------:|------------:|--------------:|-----------:|
-|             0 |        1223 |    14.46      |   0.4 s    |
-|           64k |         753 |    14.09      |    88 s    |
-|          128k |         624 |    13.77      |   211 s    |
-|        **200k** |     **531** | **13.48**   | **378 s**  |
+|             0 |        1267 |    14.50      |   0.4 s    |
+|           64k |         743 |    14.33      |    89 s    |
+|          128k |         623 |    14.31      |   211 s    |
+|        **200k** |     **531** | **14.42**   | **378 s**  |
 
-Decode rate degrades only **−7% from d=0 to d=200k** thanks to FP8 KV. Prefill drops sub-linearly (expected). At d=200k a fresh prompt takes ~6.3 minutes one-shot; once cached, decode runs at ~13.5 t/s per request. Pre-flight: install `python3.12-dev`, `build-essential`, and `ninja-build` (FlashInfer JIT-compiles attention kernels on first request).
+Decode rate degrades only **−0.6% from d=0 to d=200k** with the loop-5 tuned defaults — FP8 KV + FLASH_ATTN keep the decode flat as KV grows. Prefill drops sub-linearly (expected). At d=200k a fresh prompt takes ~6.3 minutes one-shot; once cached, decode runs at ~14.4 t/s per request. Pre-flight: install `python3.12-dev`, `build-essential`, and `ninja-build` (FlashInfer JIT-compiles attention kernels on first request).
 
 For repeated tuning passes, log each run instead of editing shell history:
 
