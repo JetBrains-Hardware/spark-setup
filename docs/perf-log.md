@@ -238,15 +238,58 @@ Realistic substitutes for "compact KV cache":
 - **vLLM built-in `--kv-cache-dtype fp8`** is the only operational compact-KV option on this stack today. ~2× compression vs FP16, no quality loss, no perf hit at our depths. **Already adopted in production config** (Phase 4 onwards).
 - **Better TurboQuant** would need a fork that actually adapts to FP8 weights — none publicly available as of writing. Re-evaluate when one appears.
 
-## Phase 8 — SFP+ inter-host network (open, blocked)
+## Phase 8 — Inter-host fast network (audited 2026-05-09)
 
-Three hosts in the intended mesh: `spark-05`, `spark-07`, `thor-04`. Audit (May 7):
+### Per-host NIC inventory
 
-- `spark-05` and `spark-07` each have **4× `mlx5_core` ports** (Mellanox ConnectX). All show `carrier=0`, `Link detected: no`. Some report "Direct Attach Copper, No partner detected" — DAC plugged in, no partner.
-- `thor-04` is offline (ssh times out on LAN, Tailscale shows peer with no active connection).
+#### spark-05 (DGX Spark, GB10)
+- **4× Mellanox MT2910 [ConnectX-7]** ports — `enp1s0f0np0`, `enp1s0f1np1`, `enP2p1s0f0np0`, `enP2p1s0f1np1`
+  - Firmware 28.45.4028, PCIe x4 @ 32 GT/s (126 Gb/s)
+  - All four `<...UP>` administratively, but `state DOWN` because no carrier
+  - dmesg port-module events: **f0 ports = "Cable unplugged"**, **f1 ports = "Cable plugged"**. So 2 of 4 cables present.
+  - **Driver warning**: `Detected insufficient power on the PCIe slot (27W)` — ConnectX-7 datasheet calls for more under load; may cap throughput.
+- 1× `r8127` 1 GbE on `enP7s7` (management LAN, 192.168.178.75) — UP
+- `Link detected: no` on all 4 mlx5 ports.
 
-**Blockers**:
-1. Physical-layer issue on the SFP+ ports — `ip link set up` won't help; the cables aren't carrying signal.
-2. `thor-04` powered off — can't be part of any topology.
+#### spark-07 (DGX Spark, GB10)
+- Same 4× ConnectX-7. dmesg shows **all four cables now plugged** (two at boot, two more plugged at +240 074 s of uptime).
+- All four `<...UP>` admin, `state DOWN` no carrier. `Link detected: no` everywhere.
+- 1× `r8169` 1 GbE on `enP7s7` (192.168.178.66 area).
 
-**Decision**: park until thor-04 is on, cabling is verified, and the topology (direct mesh vs. switch) is chosen. Then assign a `10.10.0.0/24` subnet via netplan and validate with `iperf3`.
+#### thor-04 (NVIDIA Jetson Thor, `Linux 6.8.12-tegra`)
+- **No Mellanox / no SFP+.** The host has integrated **`nvethernet` (Tegra MGBE) RJ45 jacks**.
+- 4× `mgbe0_0..mgbe3_0`: `Speed 10000Mb/s`, `Port: MII (TP)`, **`Link detected: yes` on all four**, no IP configured.
+- 1× `r8126` 1 GbE on `enP2p1s0` (192.168.178.76, default route via that).
+
+### Implications
+
+1. **The "SFP+ network between 3 GPU devices" premise is wrong** — thor-04 has zero SFP+. The high-speed mesh therefore can't be uniform-SFP+; it has to bridge SFP+ (Sparks) ↔ 10GBASE-T (thor-04).
+2. **Sparks' SFP+ ports show cables but no link**, while **thor-04's 10G RJ45 ports show active links** (to something). Three live possibilities:
+   - All seven (4 thor + 2 spark-05 + ≥2 spark-07) cables run to a hybrid switch (SFP+ cages + 10GBASE-T jacks) that's *partially* configured — thor's RJ45 side links, the SFP+ side doesn't.
+   - thor's links go to a different device entirely (a separate switch, NAS, or loop) and the Spark DACs go to a switch that's off / wrong-speed.
+   - Sparks' DACs go directly between hosts (Spark↔Spark), and link doesn't form because of a speed/FEC mismatch or a bad cable.
+3. **No usable speed information from the SFP+ side without a partner** — `ethtool` shows the placeholder `1000baseT/Full` only because there's no module SFP info; ConnectX-7 actually supports 10/25/50/100/200/400 GbE. We can't pick a "max speed" until link forms.
+4. The PCIe-power warning on spark-05 means the slot only sources 27 W. ConnectX-7's full envelope is higher. Need to verify the chassis can sustain it under load — otherwise even a forming link could throttle.
+
+### What I cannot fix from the OS
+
+- **Physical cabling** — which DAC goes from where to where. The dmesg events tell me cables are inserted into the NIC cages, not what's at the other end.
+- **Switch configuration** — if a switch sits in the middle, it has to be configured to negotiate the right speed/FEC.
+- **Power delivery** — the PCIe-slot 27 W reading is a hardware/firmware concern, not a netplan one.
+
+### Verdict + asked-for clarifications
+
+| Topology option | What it gives | Hardware required |
+|:---|:---|:---|
+| **A: 2-host SFP+ Spark↔Spark direct** | Up to 200/400 GbE between the two Sparks | 1 DAC between matched ports on spark-05 and spark-07. Drop existing failed cables, use a known-good direct one. thor-04 stays on the 1 GbE LAN. |
+| **B: 3-host via hybrid switch** | All-to-all fast networking, capped by thor-04's 10 GbE | A switch with **both** SFP+ cages and 10GBASE-T jacks (Mikrotik CRS, Ubiquiti EnterpriseXG, etc.). Cables: 1 DAC each from each Spark to the switch's SFP+ side; 1 RJ45 each from each thor-04 mgbe port to the switch's 10GBASE-T side. |
+| **C: 3-host via 10GBASE-T transceivers** | Uniform 10 GbE all-to-all | SFP+ → 10GBASE-T transceivers in each Spark (Mellanox compatibility list — Mikrotik S+RJ10 typically works, but ConnectX-7 datasheet should be checked). Then either direct-mesh (3 cables in a triangle, with one extra port per Spark) or switch. |
+
+I am not making any link-up / IP-assign changes until you confirm the topology — admin-up'ing a port that's wired into a misconfigured switch can cause spanning-tree storms, and configuring `10.10.0.0/24` on the wrong interface poisons routing.
+
+**Open questions for the user:**
+
+1. Is there a switch in the loop, and if so what's its model + management IP?
+2. Are the cables currently connected to anything live, or are they dangling? (Visual check.)
+3. If you want option **A** (Spark-pair only): which physical port of spark-05 should go to which physical port of spark-07?
+4. Will you tolerate option **B/C** requiring extra transceivers / a switch purchase?
