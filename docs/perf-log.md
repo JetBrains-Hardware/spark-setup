@@ -209,6 +209,35 @@ QWEN36_BARE_ATTENTION_BACKEND=FLASH_ATTN
 
 These are now the script defaults, so a plain `bash run-qwen36-bare.sh` matches the production-tuned config.
 
+### Loops 6–7 (extended sweep)
+
+| Loop | Knob | Decode tg c=1 | Throughput tg c=8 (total) | Decision |
+|---:|:---|---:|---:|:---|
+| 6 | mnbt 16384 → **32768** | 12.47 (−3.3% vs L5) | n/a | **revert** — bigger batch budget hurt at single-stream |
+| 7 | gpu-mem-util 0.85 → **0.90** | 12.52 (−2.9%) | 86.81 (within noise) | **revert** — not memory-bound at our test loads |
+
+Loop 8 (gpu-mem-util 0.95) skipped: pattern from loop 7 was clear, no point burning a cold start to confirm a regression.
+
+## Phase 7b — TurboQuant retry on stable vLLM 0.20.1
+
+Earlier TurboQuant attempt (Phase 3) was on vLLM 0.17.1.dev (Docker). Stable 0.20.1 is what bare-metal runs now. Retry to see if the CUDA-graph path changed.
+
+| Step | Result |
+|:---|:---|
+| `pip install -e turboquant/` into stable `.venv` | Patches from Phase 3 still in place. Imports OK. |
+| Launch `tq-serve.py serve ... --enforce-eager=False` (CUDA graphs on) | **Same wall**: `RuntimeError: Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned.` Confirms the bug is in the **fork's hot path**, not vLLM-version-specific. |
+| Launch with `--enforce-eager` (CUDA graphs off) | **Engine starts, `/health` 200, completions return HTTP 200.** The fork's hooks are running. |
+| Decode bench at default 3-bit K / 2-bit V | **Coherence test FAILED** (model returned garbage instead of "Paris"). Model is incoherent — tokens look like `Here!!!!!!!`. |
+| Retry with TQ_KEY_BITS=4 / TQ_VALUE_BITS=4 (the fork's "near-lossless" claim) | **Still incoherent.** Output: `Here!\n! (!/!\n!\n\n!_!k!  \n!\n!\n\n!!!!!!!!...` (just `!` and noise). |
+
+### Verdict
+
+`0xSero/turboquant` **fundamentally does not produce correct logits on Qwen3.6-27B-FP8** at any tested bit-width. The fork was developed and tested on **Qwen3.5-27B-AWQ** (different quantization scheme) — its KV-cache hooks don't compose with FP8's per-channel/per-tensor scaling on Qwen3.6.
+
+Realistic substitutes for "compact KV cache":
+- **vLLM built-in `--kv-cache-dtype fp8`** is the only operational compact-KV option on this stack today. ~2× compression vs FP16, no quality loss, no perf hit at our depths. **Already adopted in production config** (Phase 4 onwards).
+- **Better TurboQuant** would need a fork that actually adapts to FP8 weights — none publicly available as of writing. Re-evaluate when one appears.
+
 ## Phase 8 — SFP+ inter-host network (open, blocked)
 
 Three hosts in the intended mesh: `spark-05`, `spark-07`, `thor-04`. Audit (May 7):
