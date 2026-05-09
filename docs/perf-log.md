@@ -293,3 +293,40 @@ I am not making any link-up / IP-assign changes until you confirm the topology �
 2. Are the cables currently connected to anything live, or are they dangling? (Visual check.)
 3. If you want option **A** (Spark-pair only): which physical port of spark-05 should go to which physical port of spark-07?
 4. Will you tolerate option **B/C** requiring extra transceivers / a switch purchase?
+
+### 2026-05-09 deep dive — what actually links / what doesn't
+
+Cable inventory (post-deep-probe via `ethtool -m`):
+- spark-05: **2 cables** — both `enp1s0f1np1` and `enP2p1s0f1np1` (the f1 ports). Identifier `0x11 (QSFP28)`, length 1 m, `FS QSFP-200G-PC005`. The two f0 ports are empty.
+- spark-07: **4 cables** — every cage has a `FS QSFP-200G-PC005` 1 m DAC. So spark-07 has more cables in cages than spark-05 has.
+- thor-04: lspci endpoints are NVIDIA SoC GPU, Realtek 8852CE wireless, Realtek 8126 (RJ45 1G) and the NVMe — **zero Mellanox / zero QSFP socket**. The 4× `mgbe` 10GBASE-T ports were `Link detected: yes` on May 7 but now show `Link detected: no` (cables moved off them between audits). A QSFP-200G-PC005 plug physically does not fit into any thor-04 port.
+
+dmesg history on spark-07's link:
+- `+2 141 269 s uptime`: both f1 ports went **`Link up`** simultaneously → `roce... Link ACTIVE` (RoCE up). This is the first time the cluster had a working high-speed link.
+- `+2 146 692 s` (~1.5 h later): both f1 ports `Link down` together (suggests both went to the same partner, which then went away).
+- `+2 351 223 s`: **all 4 modules** report `Cable unplugged`, ~6 s later all 4 plugged again.
+- After that **no link has formed** on any port.
+
+When I tried a plain `ip link set down/up` cycle on the f1 ports of both Sparks, the kernel surfaced **ConnectX-7 firmware-command timeouts** on both:
+```
+mlx5_core 0000:01:00.0: wait_func_handle_exec_timeout: ... DESTROY_EQ(0x302) timeout.
+                       Will cause a leak of a command resource
+mlx5_core 0002:01:00.0: query_mcia_reg failed: status: 0x3
+mlx5_core 0000:01:00.1: wait_func_handle_exec_timeout: ... ACCESS_REG(0x805) timeout
+```
+
+Combined with the earlier boot warning `Detected insufficient power on the PCIe slot (27W)`, the Mellanox firmware on **both** Sparks is in a partially hung state. `ACCESS_REG`/`DESTROY_EQ` aren't completing, each timeout leaks a command-queue slot, and the cards refuse to negotiate link. A simple `ip link` cycle is not going to recover this — the firmware needs a reset (either `mlxfwreset` or a host cold reboot).
+
+### Verdict
+
+- **The "spark-07 ↔ thor-04" cable is a false premise.** thor-04 has no socket that accepts QSFP-200G-PC005. The cable end at the thor-04 chassis is either dangling, plugged into the chassis but not into a NIC port, or the user is mis-remembering which device is at the far end. This needs a visual cable trace.
+- **The "spark-05 ↔ spark-07" cables are real.** Both endpoints have a matching cable on `enp1s0f1np1` + `enP2p1s0f1np1`. They linked once (`Link ACTIVE`) and have been dark since the most recent unplug/replug. Recovery requires firmware reset on at least spark-07's ConnectX-7.
+
+### Recovery plan (granted by user, in progress)
+
+1. Reboot spark-07 — clears its ConnectX-7 firmware. Briefly takes `gemma4-spark` vLLM down.
+2. Reboot spark-05 — production qwen36 bare-metal vLLM goes down briefly; restarts via `run-qwen36-bare.sh`.
+3. After both up, observe whether link auto-forms on the f1 ports.
+4. If still dark: try `mlxfwreset -d <pci> reset` on each card.
+5. If link forms: assign IPs in `10.10.10.0/30` (point-to-point pairs), validate ping + iperf3.
+6. If link stays dark after fwreset: cable / firmware-version / PCIe-power issue — escalate.
