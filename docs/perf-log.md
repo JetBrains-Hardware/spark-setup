@@ -330,3 +330,40 @@ Combined with the earlier boot warning `Detected insufficient power on the PCIe 
 4. If still dark: try `mlxfwreset -d <pci> reset` on each card.
 5. If link forms: assign IPs in `10.10.10.0/30` (point-to-point pairs), validate ping + iperf3.
 6. If link stays dark after fwreset: cable / firmware-version / PCIe-power issue — escalate.
+
+### Recovery attempt — both Sparks hung after reboot
+
+**2026-05-09 ~23:20 → 2026-05-10 ~00:00 (Mac local time):**
+
+| Action | Result |
+|:---|:---|
+| `ssh spark-07 'sudo reboot'` (after the ip-link cycle that surfaced the firmware command timeouts) | spark-07 :22 closed at +13 s. **Did not come back.** Polled for 4 min: ping fails, ARP entry stays incomplete. |
+| User reset all 3 hosts physically | thor-04 returned (4 min uptime when checked). spark-05 + spark-07 stayed down. |
+| `ssh spark-07 'sudo reboot'` + `ssh thor-04 'sudo reboot'` (parallel, after user's reset) | thor-04 returned within seconds. spark-07 stayed down. |
+| Polled for 10 more minutes | spark-05 + spark-07 STILL down. ARP from Mac shows `192.168.178.75` (spark-05) and `192.168.178.66` (spark-07) as `(incomplete)` — boxes not on the LAN. |
+| Polled at +50+ min total | Both Sparks STILL down. thor-04 still up (54 min uptime). |
+
+The reboots have made things **worse**, not better. Both Sparks now stuck somewhere before sshd starts (or before networking comes up). Plausible causes:
+
+- The leaked `mlx5_core` command-queue resources persist into the next boot via firmware-side state, and POST hangs when the kernel re-tries those EQ ops.
+- The Mellanox firmware has crashed (corrupt internal state from the unplug/replug + ip-link cycling), and POST hangs waiting on it.
+- DGX OS's nvidia-installer / first-boot sequence has been wedged by the QSFP cabling state.
+
+**Production qwen36 vLLM on spark-05 is consequently DOWN.** This is now blocking *all* downstream work, not just the SFP+ thread.
+
+### Hard recommendations to the human
+
+1. **Physical visit to both Sparks**: check power LED state, look for boot-stage indicator (DGX Spark has front status LEDs / a serial debug header). If hung, hard power-cycle (hold power 10 s).
+2. **If a hard cycle still hangs**: **disconnect ALL QSFP cables** from the Sparks before powering on. Reboot with the SFP+ cages empty — confirms whether the Mellanox firmware/cable state is what's wedging POST.
+3. **If they boot fine without cables**: only then plug ONE cable (spark-05.f1.0 ↔ spark-07.f1.0) and watch dmesg + link state on first plug.
+4. **Do NOT** issue any more `sudo reboot` from the OS or run any more `ip link` commands until the boxes are physically verified to be POSTing cleanly.
+
+**Tasks parked here**: the SFP+ network configuration cannot proceed until both Sparks are bootable. thor-04 remains the only fast-side host that came back from the recovery cycle.
+
+### Open thread: current state of the cluster (2026-05-10)
+
+| Host | State | Notes |
+|:---|:---|:---|
+| spark-05 | DOWN ~50+ min after reboot | Production qwen36 vLLM not serving |
+| spark-07 | DOWN ~50+ min after reboot | gemma4-spark vLLM not serving |
+| thor-04 | UP | gemma4-thor vLLM still expected to serve; femtollm direct route `/thor-04/v1/...` available |
