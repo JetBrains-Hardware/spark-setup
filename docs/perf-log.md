@@ -165,7 +165,51 @@ Pivoting back to the **production-stable bare-metal config (MTP=1 + FP8 KV + 256
 - If rebuild #3 fails on another sm_121 kernel → either pin to BF16 base (`Qwen/Qwen3.6-27B`, ~54 GB) which doesn't hit the FP8 cutlass paths, or wait for PR #40898 to merge into stable.
 - DDTree integration is **fork-not-upstream**. Re-evaluate once a vLLM-merged version exists. Don't run a custom DDTree fork until upstream stabilises.
 
-## Phase 6 — SFP+ inter-host network (open, blocked)
+## Phase 7 — Optimization loops on the production config
+
+Five focused single-knob loops. Baseline = bare-metal MTP=1 + FP8 KV + max-model-len 262144 (Phase 4b numbers).
+Each loop sweeps **one** knob, decides keep/revert, carries winners forward.
+
+| Loop | Knob | Test | Decode tg c=1 | Decision |
+|---:|:---|:---|---:|:---|
+| baseline | (Phase 4b) | — | 14.46 (peak 15.0) | — |
+| 1 | `max-num-batched-tokens` 8192 → **16384** | decode | 12.66 (peak 14.0) | keep (within noise on decode, helps prefill batching at long ctx) |
+| 2 | `block-size` 16 → **32** (carry mnbt=16384) | decode | 12.89 (peak 14.33) | **keep** (+0.2 over loop 1, slight peak gain) |
+| 3 | `max-num-seqs` 32 → 64 (carry blksz=32, mnbt=16384) | decode + throughput | 12.25 (peak 14.0) | **revert** (decode regressed −5%, c=4/c=8 within noise) |
+| 4 | `--attention-backend` FLASHINFER → **FLASH_ATTN** | decode | 12.87 (peak 14.0) | **keep** — decode within noise, **prefill +37%** (pp512: 947 → 1302 t/s) |
+| 5 | combined winners (`mnbt=16384, blksz=32, mns=32, FLASH_ATTN`) | huge (depths up to 200k) | see below | **adopted as new defaults** |
+
+### Loop 5 final huge profile (combined winners)
+
+| Depth | Prefill t/s | Decode tg t/s | Δ vs Phase 4b |
+|---:|---:|---:|---:|
+| 0 | 1267 ± 2 | **14.50** ± 0.00 (peak 15) | +0.3% |
+| 64 k | 743 ± 7 | **14.33** ± 0.15 (peak 14.5) | +1.7% |
+| 128 k | 623 ± 1 | **14.31** ± 0.24 | **+3.9%** |
+| **200 k** | 531 ± 0 | **14.42** ± 0.23 | **+7.0%** |
+
+Decode is now nearly **flat from depth 0 to 200 k** (−0.6% drop instead of −7%). The FP8 KV + FLASH_ATTN combination sustains decode throughput as KV grows.
+
+### Hardware knobs probed
+
+- `nvidia-smi --query-gpu=clocks.current.sm,clocks.max.sm`: 2392 / 3003 MHz at idle, GPU already runs near boost during inference. Locking via `-lgc 3003,3003` would only shave a few % off TTFT and risks throttling — left default.
+- Persistent mode (`nvidia-smi -pm 1`) already enabled by `nvidia-persistenced` (audited in Phase 4 setup).
+
+### Adopted defaults in `run-qwen36-bare.sh`
+
+```bash
+QWEN36_BARE_MAX_MODEL_LEN=262144
+QWEN36_BARE_GPU_MEMORY_UTILIZATION=0.85
+QWEN36_BARE_MAX_NUM_BATCHED_TOKENS=16384
+QWEN36_BARE_BLOCK_SIZE=32
+QWEN36_BARE_KV_CACHE_DTYPE=fp8
+QWEN36_BARE_NUM_SPECULATIVE_TOKENS=1   # MTP=1 — production stable winner
+QWEN36_BARE_ATTENTION_BACKEND=FLASH_ATTN
+```
+
+These are now the script defaults, so a plain `bash run-qwen36-bare.sh` matches the production-tuned config.
+
+## Phase 8 — SFP+ inter-host network (open, blocked)
 
 Three hosts in the intended mesh: `spark-05`, `spark-07`, `thor-04`. Audit (May 7):
 
