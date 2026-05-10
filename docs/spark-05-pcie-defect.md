@@ -4,6 +4,8 @@
 **First observed**: 2026-05-07
 **Confirmed root cause**: 2026-05-10
 **Affected unit**: `spark-05` (one of two NVIDIA DGX Spark / GB10 hosts in this lab)
+**Affected unit serial**: `1984025007690` (Product `NVIDIA_DGX_Spark`, Version `A.7`, SKU `0000`)
+**Field Diagnostics**: ✅ **PASS** (`partnerdiag --field` r9.257.3, 30:03 elapsed, all 8 tests OK) — see Appendix.
 **Status**: blocking — Mellanox ConnectX-7 inter-host networking unusable; only the 1 GbE management interface works.
 
 ---
@@ -284,6 +286,63 @@ The PASS/FAIL output and saved log are exactly what NVIDIA support asks for to q
 1. Confirm whether **DGX Spark BIOS/firmware updates** address chronic PCIe downtrain on the Mellanox bridge ports (and provide the procedure if so).
 2. Whether the `Detected insufficient power on the PCIe slot (27W)` reading should be silenced or fixed in DGX OS — present uniformly on both Sparks, so likely a known false-alarm.
 3. **Service / unit replacement** for `spark-05` if BIOS/firmware update does not change `LnkSta` from 2.5 GT/s to 32 GT/s.
+
+## Appendix — NVIDIA DGX Spark Field Diagnostics PASS, but the diag does not cover the fault
+
+`sudo /opt/nvidia/dgx-spark-fieldiag/partnerdiag --field` ran successfully on `spark-05` after stopping `gdm` (Xorg/gnome-shell were holding `nvidia_drm`). Result:
+
+```
+DGX FIELD DIAGNOSTIC
+Version                  r9.257.3
+Build Date               Fri, 19 Dec 2025
+Product                  NVIDIA_DGX_Spark
+Product Version          A.7
+SKU                      0000
+Serial Number            1984025007690
+Start time               Sun, 10 May 2026 22:33:06
+End time                 Sun, 10 May 2026 23:03:09  [30:03s elapsed]
+
+Testing GpuStress      OK [ 3:19s ]
+Testing C2CStress      OK [ 0:06s ]
+Testing CpuStress1     OK [ 0:08s ]
+Testing CpuStress2     OK [10:14s ]
+Testing PowerStress    OK [ 8:11s ]
+Testing ThermalStress  OK [ 0:42s ]
+Testing FioSSD         OK [ 0:11s ]
+Testing MemStress      OK [ 7:08s ]
+
+Final Result: PASS
+```
+
+The pass actually **strengthens** the RMA case: every standard component health check is green, including `PowerStress`, `ThermalStress`, `C2CStress`, GPU and memory — yet the **Mellanox ConnectX-7 PCIe link still trains to 2.5 GT/s and the cards still vanish from `lspci`**. The diag's eight tests do **not** include any test for:
+
+- PCIe link training to the Mellanox bridges (`0000:00:00.0`, `0002:00:00.0`)
+- ConnectX-7 driver/firmware health
+- QSFP cage / module EEPROM readback
+- mlx5 RDMA / RoCE loopback
+
+So the field diagnostic confirms the rest of the unit is healthy and isolates the fault to the Mellanox PCIe path the diag does not cover.
+
+Logs preserved at `/home/jetbrains/spark-setup-baremetal/fieldiag-logs/` on `spark-05` (key files: `summary.csv`, `summary.json`, `run.log`, `verbose_run.log`, `test_status.log`, plus per-test sub-directories).
+
+```
+$ sudo cat /home/jetbrains/spark-setup-baremetal/fieldiag-logs/summary.csv
+0,GpuStress,custommods,,GPU,,OK,1,,
+0,C2CStress,custommods,,C2C,,OK,1,,
+0,CpuStress1,custommods,,CPU,,OK,1,,
+0,CpuStress2,cpustress,,CPU,,OK,0,,
+0,PowerStress,custommods,,Power,,OK,1,,
+0,ThermalStress,custommods,,Thermal,,OK,1,,
+0,FioSSD,custom,,SSD,,OK,0,,
+0,MemStress,custom,,Memory,,OK,0,,
+```
+
+Pre-flight notes worth telling the next person who runs this diag:
+
+- **Secure Boot must be DISABLED** in UEFI before launching. `mokutil --sb-state` should report `SecureBoot disabled` first.
+- The diag refuses to start if `nvidia_drm` cannot be unloaded. On a standard DGX OS install, `gdm` (display manager) holds it via Xorg/gnome-shell/mutter. Stop `gdm` (`sudo systemctl stop gdm`) before invoking the diag, restart it after.
+- Prerequisite packages: `stress-ng`, `fio`, `memtester`. The `dgx-spark-fieldiag` package itself comes from the NVIDIA CUDA SBSA apt repo (already configured on DGX OS).
+- The binary inside the package is `partnerdiag`, not `dgx-spark-fieldiag`. Run with `sudo ./partnerdiag --field --log <dir>` from `/opt/nvidia/dgx-spark-fieldiag/`.
 
 ## Reproduction commands (for verification)
 
