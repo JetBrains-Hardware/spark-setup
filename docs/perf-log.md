@@ -490,3 +490,39 @@ Stop interactive recovery attempts on spark-05. The next useful step is **out of
 3. **NVIDIA DGX Spark support ticket** if the BIOS update doesn't change the PCIe link state. Reference: chronic LnkSta=2.5GT/s on Mellanox bridges, persistent 27 W slot warning, ConnectX-7 cards drop off bus after E-Switch cleanup.
 
 The cluster's high-speed networking story is **deferred** until spark-05's PCIe is actually healthy. spark-07's mlx5 still works fine; if you ever want a 2-host fast link, that path is open with a known-good peer (not spark-05 in its current state).
+
+### 2026-05-10 — A/B comparison nails the root cause
+
+After spark-05's third hang got cleared by another hard power-cycle (cables out), I re-checked the PCIe state on both Sparks side-by-side. Same hardware family, same DGX OS image, same `mlx5_core` driver version.
+
+| Metric | spark-05 | spark-07 |
+|:---|:---:|:---:|
+| `LnkCap` Mellanox bridge `0000:00:00.0` | 32 GT/s x4 | 32 GT/s x4 |
+| `LnkSta` Mellanox bridge `0000:00:00.0` | **2.5 GT/s x4** | **32 GT/s x4** |
+| `LnkCap` Mellanox bridge `0002:00:00.0` | 32 GT/s x4 | 32 GT/s x4 |
+| `LnkSta` Mellanox bridge `0002:00:00.0` | **2.5 GT/s x4** | **32 GT/s x4** |
+| ConnectX-7 cards in `lspci` post-init | **gone** | 4 present |
+| `Detected insufficient power on the PCIe slot (27W)` dmesg | yes (every boot) | yes (every boot) |
+| Production vLLM serving | yes (over 1 GbE management) | yes (over 1 GbE management) |
+
+The clean A/B says:
+
+- **The 27 W warning is uniform across both hosts** — it's a constant report from `mlx5_core`'s `mlx5_pcie_event`, not the differentiator. spark-07 boots clean *with the same warning* and trains its PCIe link to the full 32 GT/s. **Earlier I attributed the downtrain to power; that attribution was wrong.** The warning is informational noise.
+- **The actual differentiator is PCIe link training**. spark-05's bridges report `Speed 2.5GT/s` (PCIe 1.0); spark-07's report `Speed 32GT/s` (PCIe 5.0). 2.5 GT/s × 4 lanes = 10 Gb/s — far below what a ConnectX-7 needs to function, so the kernel disables the cards once it sees the bandwidth shortfall.
+- **This is a per-unit hardware defect on spark-05.** Likely candidates: PCIe trace signal integrity, the on-board retimer (`LnkCap2: Retimer+ 2Retimers+` confirms two retimers are in the path), or an internal connector/solder issue. Software cannot fix this.
+
+### NVIDIA support ticket — payload
+
+For an NVIDIA DGX Spark support engagement, the artefacts to attach:
+
+- The exact `LnkCap`/`LnkSta` from `lspci -vvv -s 0000:00:00.0` and `0002:00:00.0` on both Sparks (above table).
+- Reproduction: every reboot of spark-05, with or without QSFP cables connected, results in `LnkSta: Speed 2.5GT/s` on the Mellanox bridges, followed by `mlx5_core` printing `E-Switch: cleanup` and the PCI endpoints disappearing from `lspci`.
+- Counter-evidence: spark-07 with identical hardware/firmware/OS/kernel reports `LnkSta: Speed 32GT/s` and the cards stay healthy.
+- DGX OS kernel: `6.17.0-1014-nvidia` (`uname -srm`).
+- `mlx5_core` firmware: `28.45.4028` on both Sparks.
+
+### What I'm doing while spark-05 awaits service
+
+- Restarting production qwen36 on spark-05's 1 GbE management interface so the model serves again (vLLM cold-starting now).
+- Spark-07 + thor-04 stay on their existing roles; femtollm direct routes for `/spark-07/...` and `/thor-04/...` continue to work. `gemma4-thor` container still needs to be restored on thor-04 (separate task).
+- The SFP+ inter-host link is **parked** — without two healthy mlx5 endpoints there is no fast link to bring up. spark-07 alone has Mellanox; thor-04 has none; spark-05's are inaccessible.
