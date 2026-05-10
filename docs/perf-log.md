@@ -367,3 +367,32 @@ The reboots have made things **worse**, not better. Both Sparks now stuck somewh
 | spark-05 | DOWN ~50+ min after reboot | Production qwen36 vLLM not serving |
 | spark-07 | DOWN ~50+ min after reboot | gemma4-spark vLLM not serving |
 | thor-04 | UP | gemma4-thor vLLM still expected to serve; femtollm direct route `/thor-04/v1/...` available |
+
+### 2026-05-10 — recovery via hard power-cycle + QSFP cables disconnected
+
+User performed a hard power-cycle on both Sparks **with all QSFP cables disconnected** before powering on. Both came back cleanly:
+
+- spark-05: 3 h 47 m uptime, dmesg clean (`mlx5_core` reports `Cable unplugged` on every port at init, then quiet — no command-queue timeouts, no firmware errors).
+- spark-07: 3 h 47 m uptime, same clean dmesg pattern.
+- thor-04: kept its 15 h uptime (previous reboot still good).
+
+**This confirms the boot-blocker theory**: with the QSFP cables left in (in their previous wedged-firmware state) the Sparks would not POST cleanly. Cables out → POST clean. The mechanism is: hung Mellanox firmware state in the cable's EEPROM-readback path was stalling kernel `mlx5_core` init at boot, indefinitely.
+
+The boot-time `Detected insufficient power on the PCIe slot (27W)` warning persists — it's a **non-fatal** message printed at every boot regardless of cable state, can be ignored.
+
+### Service recovery
+
+- spark-05: production qwen36 bare-metal vLLM restarted with the loop-5 winners (`bash run-qwen36-bare.sh` — defaults: `MTP=1, KV=fp8, max-model-len=262144, block-size=32, mnbt=16384, FLASH_ATTN, gpu-mem-util=0.85`). Cold start in progress.
+- spark-07: gemma container auto-restarted (Docker `restart: unless-stopped`). `:8000/health` returns 200. femtollm sees `gemma4-spark` as alive.
+- thor-04: **gemma container did NOT auto-start** after its reboot. `docker ps -a` is empty. This is separate from the SFP+ thread and needs the deploy command (out of repo) to restore.
+
+### Next step (when user is ready)
+
+Plug **one** QSFP-200G-PC005 cable between matching f1 ports on the two Sparks (e.g. spark-05.f1.0 ↔ spark-07.f1.0). I will:
+- Watch dmesg `Port module event: Cable plugged` on both ends.
+- Verify no firmware-command timeouts re-appear.
+- Check `ethtool` reports a real link rate (200 GbE expected).
+- If the link comes up: assign `10.10.10.1/30` ↔ `10.10.10.2/30` and run `iperf3 -c -P 16 -t 10` to confirm line-rate.
+- Only after the first cable is verified working, plug the second and test in parallel.
+
+The "spark-07 ↔ thor-04" cable still has no valid landing point on thor-04. We'll address that separately once the Spark↔Spark link is up.
