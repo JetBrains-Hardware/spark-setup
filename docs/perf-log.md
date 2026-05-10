@@ -446,3 +446,47 @@ Two routes I see, both need the human:
 
 1. **Power-cycle spark-05 once more, cables out**, see if the mlx5 cards re-enumerate cleanly. If they do, immediately plug one cable to spark-07 and watch the link form. If they don't appear again, this is a hardware/firmware issue that I cannot drive remotely — escalate to NVIDIA support / DGX Spark service.
 2. **Skip spark-05 for the SFP+ network entirely**. spark-07 is healthy; with thor-04 having no SFP+ either, the only configurable link of any speed > 1 GbE in the cluster is between spark-07's mlx5 and a peer that doesn't yet exist. Park the SFP+ thread until you decide.
+
+### 2026-05-10 ~14:00 — PCIe link is the root cause; spark-05 hung again
+
+`lspci -vvv` on the Mellanox bridge ports of spark-05:
+```
+0000:00:00.0:
+  LnkCap:  Speed 32GT/s, Width x4    <-- PCIe 5.0 x4, ~126 Gb/s
+  LnkSta:  Speed 2.5GT/s, Width x4   <-- !!! actual link is PCIe 1.0 (10 Gb/s)
+  LnkCap2: Retimer+ 2Retimers+
+  LnkSta2: EqualizationComplete+ EqualizationPhase1+
+
+0002:00:00.0:
+  Same — both Mellanox bridges downtrained from 32 GT/s to 2.5 GT/s
+```
+
+ConnectX-7 cannot meaningfully run at 2.5 GT/s × 4 = 10 Gb/s — a 200 GbE NIC needs PCIe 4.0 x8 minimum to even hit half rate. So the kernel/driver almost certainly disabled the cards after seeing they couldn't sustain bandwidth, which is what produced the `E-Switch: cleanup` then `lspci`-empty state we observed earlier.
+
+The downtrain is **chronic** on spark-05 — the persistent boot warning `Detected insufficient power on the PCIe slot (27W)` is consistent (PCIe 5.0 needs cleaner signaling and more stable power; with 27 W the slot can't sustain it).
+
+I tried a non-destructive recovery — `echo 1 > /sys/bus/pci/rescan` to re-walk the bridge. The rescan **hung the kernel**, and ssh to spark-05 stopped responding within a minute. Production qwen36 vLLM is consequently down again.
+
+This is the **third** hard hang of spark-05 caused by Mellanox-related ops in this session:
+1. After `ip link set down/up` cycle on f1 ports → firmware command-queue timeouts → reboot didn't recover.
+2. After `sudo reboot` → Sparks didn't come back without a hard power-cycle (with cables out).
+3. After `echo 1 > /sys/bus/pci/rescan` → kernel hung.
+
+### Verdict on spark-05
+
+The Mellanox path on spark-05 is **structurally broken at the PCIe layer**. Every operation that reaches into the cards eventually wedges the host. spark-07 has the same hardware and behaves correctly — so this is not a Spark-as-platform issue but a problem specific to spark-05's PCIe slot/retimer/firmware path.
+
+What I cannot fix from a shell:
+- PCIe link training is a hardware/firmware function; you can't force PCIe 5.0 from userspace.
+- The 27 W slot power reading is a SoC firmware report. May require BIOS/firmware update.
+- Mellanox FW upgrade via `mlxfwmanager`/`mlxup` would need OFED tooling installed and a *stable* kernel-level connection to the cards — which we don't have.
+
+### Recommendation
+
+Stop interactive recovery attempts on spark-05. The next useful step is **out of band**:
+
+1. **Hard power-cycle once more, cables still out** — get the host back so qwen36 can serve.
+2. **DGX Spark BIOS/firmware update** if NVIDIA has published one for this platform; the persistent 27 W warning may be a known issue with a fix.
+3. **NVIDIA DGX Spark support ticket** if the BIOS update doesn't change the PCIe link state. Reference: chronic LnkSta=2.5GT/s on Mellanox bridges, persistent 27 W slot warning, ConnectX-7 cards drop off bus after E-Switch cleanup.
+
+The cluster's high-speed networking story is **deferred** until spark-05's PCIe is actually healthy. spark-07's mlx5 still works fine; if you ever want a 2-host fast link, that path is open with a known-good peer (not spark-05 in its current state).
