@@ -396,3 +396,53 @@ Plug **one** QSFP-200G-PC005 cable between matching f1 ports on the two Sparks (
 - Only after the first cable is verified working, plug the second and test in parallel.
 
 The "spark-07 ↔ thor-04" cable still has no valid landing point on thor-04. We'll address that separately once the Spark↔Spark link is up.
+
+### 2026-05-10 ~13:45 — spark-05 mlx5 cards vanished post-boot
+
+After the post-cable-disconnect reboot, **spark-05's Mellanox ConnectX-7 PCIe devices disappeared from the bus**. Spark-07 is healthy.
+
+`spark-05 lspci -tv`:
+```
+-[0000:00]---00.0-[01-0f]--           <-- 0000:01:00.0/.1 (Mellanox) GONE
+-[0002:00]---00.0-[01-0f]--           <-- 0002:01:00.0/.1 (Mellanox) GONE
+-[0004:00]---00.0-[01-0f]----00.0  Samsung NVMe       (intact)
+-[0007:00]---00.0-[01-0f]----00.0  Realtek 8127 (1G)  (intact, this is enP7s7)
+-[0009:00]---00.0-[01-0f]----00.0  MEDIATEK 7925 WiFi (intact)
+-[000f:00]---00.0-[01]----00.0  NVIDIA 2e12 (GPU)     (intact)
+```
+
+dmesg sequence on the failing init:
+```
+mlx5_core 0000:01:00.0: enabling device (0000 -> 0002)
+mlx5_core 0000:01:00.0: firmware version: 28.45.4028
+mlx5_core 0000:01:00.0: 126.028 Gb/s available PCIe bandwidth (32.0 GT/s PCIe x4 link)
+...
+mlx5_core 0000:01:00.0: Port module event: module 0, Cable unplugged
+mlx5_core 0000:01:00.0: mlx5_pcie_event: Detected insufficient power on the PCIe slot (27W).
+mlx5_core 0000:01:00.0: mlx5e: IPSec ESP acceleration enabled
+... (per-card probe completes for 0000:01:00.0/.1, 0002:01:00.0/.1 and netdevs are renamed enp1s0f0np0 etc.) ...
+mlx5_core 0000:01:00.0: E-Switch: Disable: mode(LEGACY), nvfs(0), necvfs(0), active vports(0)
+mlx5_core 0000:01:00.0: E-Switch: cleanup
+```
+After that — silence. lspci shows the slots empty. There are **no AER errors** in the kernel log, no explicit "Surprise removal" — the cards quietly drop off after `E-Switch: cleanup`.
+
+Likely cause stack:
+- `Detected insufficient power on the PCIe slot (27W)` is **persistent across all boots on spark-05** (also seen May 7) and looks load-bearing rather than informational. ConnectX-7's published power envelope is ~75 W under load — a starved PCIe slot can cause the card to drop off the bus once the driver starts its init sequence.
+- Firmware 28.45.4028 is current-ish but has known issues handling cable-unplug + low-power states on aarch64.
+
+### Working state right now
+
+| Host | mlx5 cards | f1 ports admin-up | Cable | Other |
+|:---|:---:|:---:|:---:|:---|
+| spark-05 | **GONE from PCI** | n/a | disconnected | qwen36 vLLM serving on the 1 GbE management port |
+| spark-07 | present, healthy | yes | disconnected | gemma vLLM serving on the 1 GbE management port |
+| thor-04 | n/a (no Mellanox) | n/a | n/a | up; gemma container did NOT auto-start |
+
+The "plug in one cable between Sparks" test **cannot succeed end-to-end** until spark-05's mlx5 cards re-appear. That requires another full power-cycle (cold reboot, not warm `sudo reboot`), preferably with the cables already out.
+
+### Decision point
+
+Two routes I see, both need the human:
+
+1. **Power-cycle spark-05 once more, cables out**, see if the mlx5 cards re-enumerate cleanly. If they do, immediately plug one cable to spark-07 and watch the link form. If they don't appear again, this is a hardware/firmware issue that I cannot drive remotely — escalate to NVIDIA support / DGX Spark service.
+2. **Skip spark-05 for the SFP+ network entirely**. spark-07 is healthy; with thor-04 having no SFP+ either, the only configurable link of any speed > 1 GbE in the cluster is between spark-07's mlx5 and a peer that doesn't yet exist. Park the SFP+ thread until you decide.
