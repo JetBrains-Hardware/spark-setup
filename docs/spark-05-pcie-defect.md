@@ -358,3 +358,111 @@ ssh spark-07 'sudo lspci -vvv -s 0000:00:00.0 | grep -E "LnkCap:|LnkSta:"; \
 ```
 
 The first command demonstrates the broken state; the second shows the working reference.
+
+---
+
+## Appendix — RMA intake email (ready to send)
+
+**To**: NVIDIA DGX Spark support (intake address from <https://docs.nvidia.com/dgx/dgx-spark/support.html>)
+**Subject**: DGX Spark RMA request — SN 1984025007690 — ConnectX-7 PCIe downtrain
+**Attachments to include before sending**: Field Diagnostics log bundle (`/home/jetbrains/spark-setup-baremetal/fieldiag-logs/`), full `dmesg` from the affected unit, full `dmesg` from the reference unit.
+
+```
+Hello NVIDIA DGX Spark Support,
+
+Requesting an RMA for DGX Spark serial number 1984025007690. The on-board
+Mellanox ConnectX-7 PCIe link on this unit consistently trains to 2.5 GT/s
+(PCIe 1.0) instead of the rated 32 GT/s (PCIe 5.0). The mlx5_core driver
+then disables the cards and they vanish from the PCI bus, making the unit
+unusable for any inter-host networking — only the 1 GbE management RJ45
+works. A second DGX Spark on the same desk, identical OS image, kernel and
+ConnectX-7 firmware, trains its Mellanox bridges to the full 32 GT/s. The
+fault is per-unit.
+
+Field Diagnostics (partnerdiag --field, r9.257.3) PASSED all 8 tests on the
+affected unit (30:03 elapsed). The Field Diag does not exercise the PCIe
+link to the Mellanox bridges or the ConnectX-7 cards, so the PASS does not
+contradict the defect.
+
+Account / contact / logistics
+-----------------------------
+  Org / end customer:  JetBrains
+  Contact name:        Eugene Petrenko
+  Email:               eugene.petrenko@jetbrains.com
+  Phone:               <PLEASE FILL IN>
+  Order / invoice / PO #: <PLEASE FILL IN>
+  Reseller / sales channel: <PLEASE FILL IN>
+  Purchase / delivery date: <PLEASE FILL IN>
+  Physical site for inbound RMA shipment: <PLEASE FILL IN — full street address>
+  Business-hours / courier access notes: <PLEASE FILL IN>
+
+Affected unit
+-------------
+  Product:         NVIDIA_DGX_Spark
+  Product Version: A.7
+  SKU:             0000
+  Serial Number:   1984025007690
+
+Software (identical on both units)
+----------------------------------
+  OS:           Ubuntu 24.04.4 LTS aarch64
+  Kernel:       6.17.0-1014-nvidia
+  glibc:        2.39
+  DGX OS image: FastOS 1.120.38 (dgx-spark-recovery-image-1.120.38)
+  mlx5_core FW: 28.45.4028
+
+Side-by-side evidence — affected unit vs. healthy reference unit
+----------------------------------------------------------------
+  Metric                                  Affected (1984025007690)   Healthy reference
+  --------------------------------------  ------------------------   -----------------
+  LnkCap on Mellanox bridge 0000:00:00.0   32 GT/s x4                 32 GT/s x4
+  LnkSta on Mellanox bridge 0000:00:00.0   2.5 GT/s x4 (PCIe 1.0)     32 GT/s x4 (PCIe 5.0)
+  LnkCap on Mellanox bridge 0002:00:00.0   32 GT/s x4                 32 GT/s x4
+  LnkSta on Mellanox bridge 0002:00:00.0   2.5 GT/s x4 (PCIe 1.0)     32 GT/s x4 (PCIe 5.0)
+  ConnectX-7 endpoints visible in lspci    none                       all 4 present
+  mlx5 netdevs in /sys/class/net           none                       enp1s0f0np0, enp1s0f1np1,
+                                                                       enP2p1s0f0np0, enP2p1s0f1np1
+  "Detected insufficient power on the
+    PCIe slot (27W)" dmesg warning         present (every boot)       present (every boot)
+  Field Diagnostics partnerdiag --field    PASS, 8/8 OK               not run (host healthy)
+  Production vLLM serving                  only via 1 GbE management  full speed
+
+Reproduction (deterministic across 5+ cold-boot cycles on the affected unit;
+verified with the reference unit as positive control):
+
+  # On the affected unit (1984025007690)
+  sudo lspci -vvv -s 0000:00:00.0 | grep -E "LnkCap:|LnkSta:"
+  sudo lspci -vvv -s 0002:00:00.0 | grep -E "LnkCap:|LnkSta:"
+  lspci | grep -i mellanox
+  ls /sys/class/net/ | grep -E '^enp1s0f|^enP2p1s0f' || echo "none"
+
+  # On the healthy reference unit (same commands)
+
+Software-side recovery attempts that did NOT help on the affected unit:
+
+  - Hard power-cycle (>= 60s off, cables in or out): reproduces every boot.
+  - `sudo reboot` with cables in cages: host did not POST after the reboot;
+    required hard power-cycle with cables removed.
+  - `echo 1 > /sys/bus/pci/rescan` (force PCI re-discovery): kernel hung,
+    host required another hard power-cycle.
+  - `ip link set <mlx5-port> down/up` when the netdev briefly exists:
+    surfaces mlx5_core command-queue timeouts (DESTROY_EQ, ACCESS_REG,
+    query_mcia_reg), each one leaking a kernel command resource.
+
+For context: forum users have reported the same symptom and were directed
+to RMA by NVIDIA staff (NVES) — see
+https://forums.developer.nvidia.com/t/connectx-7-nics-no-longer-appear/363193
+and
+https://forums.developer.nvidia.com/t/my-qsfp-ports-on-my-dgx-spark-are-not-working/362667 .
+
+Attached: Field Diagnostics log bundle, full dmesg (broken and healthy
+units), full lspci -vvv on both units.
+
+The unit is currently powered on and available for any non-destructive
+remote diagnostics you'd like to run before we ship it back.
+
+Thank you,
+Eugene Petrenko
+eugene.petrenko@jetbrains.com
+```
+
