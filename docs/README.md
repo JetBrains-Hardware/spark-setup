@@ -157,33 +157,23 @@ Measured on `spark-05` with vLLM `0.17.1.dev0` (NVIDIA GB10):
 Production picks `N=1`. Higher values are useful for offline single-stream experiments.
 Re-evaluate when the vLLM image is upgraded — the crash is a vLLM/MTP bug on this build, not a fundamental Qwen3.6 limit.
 
-### DFlash (block-diffusion drafter) — blocked on HF access
+### DFlash / DDTree — hardware-blocked on sm_121 today
 
-`z-lab/Qwen3.6-27B-DFlash` is a published draft model for Qwen3.6-27B that uses a block-diffusion
-drafter (the user's "DTree" from the original ask). Setup requires:
+The user's "DTree" maps to **DDTree** (Diffusion Draft Tree, [Technion arXiv:2604.12989](https://liranringel.github.io/ddtree/))
+which builds on **DFlash** (block-diffusion drafter). vLLM has DFlash via [PR #40898](https://github.com/vllm-project/vllm/pull/40898);
+DDTree is not yet upstream.
 
-1. **HuggingFace access grant** — the repo is gated. Visit
-   <https://huggingface.co/z-lab/Qwen3.6-27B-DFlash>, click "Request access", wait for approval.
-   Without it, `vllm serve` exits with `OSError: ... Cannot access gated repo ...`.
-2. **vLLM from PR #40898** (interleaved SWA support, not yet merged):
-   ```bash
-   ~/spark-setup-baremetal/dflash/.venv/bin/pip install -U \
-     "vllm @ git+https://github.com/vllm-project/vllm.git@refs/pull/40898/head"
-   ```
-3. Launch with the DFlash speculative config:
-   ```bash
-   QWEN36_BARE_VENV=~/spark-setup-baremetal/dflash/.venv \
-   QWEN36_BARE_DRAFT_METHOD=dflash \
-   QWEN36_BARE_DRAFT_MODEL=z-lab/Qwen3.6-27B-DFlash \
-   QWEN36_BARE_NUM_SPECULATIVE_TOKENS=15 \
-   QWEN36_BARE_ATTENTION_BACKEND=FLASH_ATTN \
-   QWEN36_BARE_MAX_NUM_BATCHED_TOKENS=32768 \
-   bash run-qwen36-bare.sh
-   ```
+Reported speedups on Qwen3-Coder-30B HumanEval (`T=0`): DFlash 6.09×, DDTree 8.22×.
 
-Compatibility with the FP8 base is unverified by the model's authors (their card shows BF16 target).
-If FP8 fails, fall back to `MODEL_NAME=Qwen/Qwen3.6-27B` (BF16, ~54 GB) — fits Spark but cuts KV
-headroom.
+**Status on Spark (GB10, sm_121)**: not feasible today.
+
+1. HF access: `z-lab/Qwen3.6-27B-DFlash` is a gated repo. We obtained access; the gate is no longer the blocker.
+2. The PR's prebuilt wheel hits `RuntimeError: cutlass_scaled_mm ... No compiled cutlass_scaled_mm for a compute capability less than CUDA device capability: 121` because the build doesn't include sm_121 (GB10) kernels.
+3. Rebuilding the PR from source with `TORCH_CUDA_ARCH_LIST="12.1+PTX"` runs into vLLM's bundled FP4 kernels (`nvfp4_kv_cache_kernels.cu`, then `qutlass-src/.../fused_quantize_nv.cu`) emitting `cvt.e2m1x2` PTX. That PTX is hardware-restricted to sm_120 / sm_100 (datacenter Blackwell), not sm_121 (GB10). Patching CMake to skip the SM120 FP4 block surfaces the same wall on the next file. Hours of patching with no guarantee.
+
+Wait for PR #40898 to land in a stable vLLM release with sm_121 kernels. If desperate, use the BF16 base (`Qwen/Qwen3.6-27B`, ~54 GB) to side-step the FP8-cutlass paths — at the cost of the FP8-only constraint and KV headroom.
+
+Launcher wiring is already in `run-qwen36-bare.sh` via `QWEN36_BARE_DRAFT_METHOD` / `QWEN36_BARE_DRAFT_MODEL` / `QWEN36_BARE_VENV`, so once the upstream toolchain catches up we can swap venvs and go.
 
 ## Compact KV Cache
 
@@ -196,21 +186,24 @@ at 13.5 t/s up to 200 k tokens (only −7% vs depth 0). Without it, the KV memor
 exceeds practical headroom on Spark's 128 GB unified memory.
 
 **TurboQuant KV-cache compression** ([ICLR 2026](https://arxiv.org/abs/2504.19874)) is
-**not currently usable with vLLM on Spark**:
+**not usable with vLLM on Spark today**, in graph mode or eager mode:
 
 - The PyPI `turboquant 0.2.0` package targets HuggingFace `model.generate(past_key_values=...)`,
   which vLLM bypasses entirely.
-- The community vLLM-integration fork (`0xSero/turboquant`) had bugs we patched in place
-  (`import os` missing; `_update_hybrid_attention_mamba_layout` signature outdated for vLLM 0.20),
-  but ultimately hits a wall at first inference:
+- The community vLLM-integration fork (`0xSero/turboquant`) needed two small patches we applied
+  (missing `import os`; `_update_hybrid_attention_mamba_layout` signature outdated for vLLM 0.20).
+  After those, in **CUDA-graph mode** the fork hits
   `RuntimeError: Cannot copy between CPU and CUDA tensors during CUDA graph capture unless the CPU tensor is pinned`.
-  Fork's hot path does an unpinned CPU↔CUDA copy that vLLM 0.20's CUDA-graph capture forbids.
-  Workaround would be `--enforce-eager` (kills the perf benefit) or patching the fork's tensor allocations.
-- The fork's monkey-patch explicitly skips Mamba/linear-attention layers and warns that
-  2-bit values cause `cos_sim ≈ 0.94` quality drift.
+  Fork's hot path does an unpinned CPU↔CUDA copy that vLLM's CUDA-graph capture forbids.
+- With `--enforce-eager` (CUDA graphs off, perf hit), the engine starts and `/health` returns 200.
+  Single completions return HTTP 200 — but **output is incoherent garbage** (e.g. `Here!!!!!!!`).
+  Both at default 3-bit K / 2-bit V *and* at the fork's "near-lossless" 4-bit K / 4-bit V config.
+- The fork was developed/tested on Qwen3.5-27B-**AWQ** (4-bit weights). Its KV-cache hooks do not
+  compose with FP8 weights on Qwen3.6 — that's the actual blocker, not the CUDA-graph one.
 
-Re-attempt when either NVIDIA fixes the eager-mode regression upstream, or a fork with proper
-pinned-memory handling shows up. For now FP8 KV is the practical compact-KV option.
+The wrapper `tq-serve.py` is committed for future retries. **For now `--kv-cache-dtype fp8` is the
+only operational compact-KV option on this stack**, and the 200k-context numbers above demonstrate
+it carries decode rate to depth without quality loss.
 
 ## Benchmarking
 
@@ -226,3 +219,30 @@ Outputs land under `~/spark-setup/perf-runs/qwen36-bench-<label>/`.
 
 `llama-benchy` defaults to downloading `gpt2` for token counting. The harness sets
 `HF_HUB_OFFLINE=1` and passes `--tokenizer "$MODEL"` so it reuses the served model's cached tokenizer.
+
+## Cluster topology
+
+Three hosts in the JetBrains GB10 lab, all on the same 1 GbE management LAN and Tailscale tailnet.
+
+| Host | Role | Hardware | Fast network |
+|:---|:---|:---|:---|
+| `spark-05` | qwen3.6-27B-FP8 (bare-metal vLLM 0.20.1, port `:8006`) | DGX Spark / GB10 | **Mellanox cards inaccessible** — chronic PCIe link downtrain. See [`spark-05-pcie-defect.md`](spark-05-pcie-defect.md) and the [submission bundle](spark-05-pcie-defect-bundle/). Pending RMA. |
+| `spark-07` | gemma 4 31B-IT (Docker, port `:8000`) | DGX Spark / GB10 | 4× Mellanox ConnectX-7 ports, PCIe 5.0 healthy. SFP+ link untested end-to-end (other endpoint blocked by spark-05's defect). |
+| `thor-04` | gemma 4 31B-IT (Docker, port `:8000`) | NVIDIA Jetson Thor (`linux 6.8.12-tegra`) | 4× integrated 10 GbE RJ45 (`mgbe0_0..3`). No SFP+ sockets on this hardware — any "QSFP cable to thor" referenced verbally is a misremember; the cable physically cannot fit. |
+
+The original "SFP+ mesh between 3 GPU devices" goal is **structurally not achievable** (thor-04 has no SFP+ sockets). Even the Spark↔Spark pair is blocked until spark-05's PCIe defect is resolved.
+
+## femtollm integration
+
+The `jonnyzzz/femto-llm` proxy on `rp16g.local:8880` advertises this cluster's models and routes
+requests across hosts:
+
+- **Default endpoint** `POST /v1/chat/completions` — pattern-matches the requested model name to
+  a backend (`gemma4-spark`, `gemma4-thor`, `qwen36-spark-05`) and load-balances.
+- **Direct per-host endpoints** added in this round (`/spark-05/v1/...`, `/spark-07/v1/...`,
+  `/thor-04/v1/...`, plus by backend name `/qwen36-spark-05/v1/...`, etc.) pin a request to one
+  backend, bypassing the model-pattern match and the load balancer. Useful for prefix-cache
+  locality and per-node smoke tests.
+- `GET /<host-or-backend>/v1/models` reports only that backend's model.
+
+See <https://github.com/jonnyzzz/jonnyzzz-femtollm> for the full feature set + deploy instructions.

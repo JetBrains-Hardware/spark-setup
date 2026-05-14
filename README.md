@@ -177,6 +177,21 @@ bash bench-qwen36.sh decode mtp1           # single profile, custom label
 
 Results land under `~/spark-setup/perf-runs/qwen36-bench-<label>/{decode,throughput,longctx}.log`.
 
+## Cluster
+
+| Host | Role | Fast network status |
+|:---|:---|:---|
+| `spark-05` | qwen3.6-27B-FP8 on `:8006` (bare-metal vLLM 0.20.1) | **PCIe defect** — ConnectX-7 link downtrains to 2.5 GT/s every boot, cards drop off the bus. RMA in progress. See [`docs/spark-05-pcie-defect.md`](docs/spark-05-pcie-defect.md). |
+| `spark-07` | gemma 4 31B-IT on `:8000` (Docker) | ConnectX-7 healthy, PCIe 5.0 trains. SFP+ link cannot be tested end-to-end until spark-05 is repaired. |
+| `thor-04` | gemma 4 31B-IT on `:8000` (Docker) | NVIDIA Jetson Thor — no SFP+ sockets exist on this hardware, only 4× integrated 10 GbE RJ45. |
+
+All three are exposed via the `jonnyzzz/femto-llm` proxy on `rp16g:8880`:
+
+- Default endpoint `/v1/chat/completions` round-robins / load-balances over backends matching the request's model name.
+- Direct endpoints `/<host>/v1/...` (e.g. `/spark-05/v1/chat/completions`) and `/<backend-name>/v1/...` pin to one specific backend, bypassing the model-pattern match. Useful for prefix-cache locality, per-node smoke tests, and draining a node.
+
+Repo: <https://github.com/jonnyzzz/jonnyzzz-femtollm>.
+
 ## Caches and Cold Starts
 
 - `run-qwen3.sh` and `run-nemotron3.sh` inspect `~/.cache/huggingface` first.
@@ -203,6 +218,8 @@ Results land under `~/spark-setup/perf-runs/qwen36-bench-<label>/{decode,through
 - `Dockerfile.gpt-oss` and `in-container.sh`: GPT-OSS image build and runtime entrypoint
 - [`docs/README.md`](docs/README.md): deployment notes and behavior differences
 - [`docs/perf-log.md`](docs/perf-log.md): full experiment log — every config, every measurement, every decision
+- [`docs/spark-05-pcie-defect.md`](docs/spark-05-pcie-defect.md): full hardware-defect report + RMA email template (active issue with spark-05's ConnectX-7 PCIe link)
+- [`docs/spark-05-pcie-defect-bundle/`](docs/spark-05-pcie-defect-bundle/): evidence files for the RMA submission (dmesg, lspci, Field Diagnostics logs)
 - [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md): common failure modes
 - [`examples/README.md`](examples/README.md): minimal config examples
 
