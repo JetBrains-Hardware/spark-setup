@@ -1,0 +1,8 @@
+0,GpuStress,custommods,,GPU,,OK,1,,
+0,C2CStress,custommods,,C2C,,OK,1,,
+0,CpuStress1,custommods,,CPU,,OK,1,,
+0,CpuStress2,cpustress,,CPU,,OK,0,,
+0,PowerStress,custommods,,Power,,OK,1,,
+0,ThermalStress,custommods,,Thermal,,OK,1,,
+0,FioSSD,custom,,SSD,,OK,0,,
+0,MemStress,custom,,Memory,,OK,0,,

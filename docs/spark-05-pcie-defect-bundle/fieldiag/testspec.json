@@ -1,0 +1,113 @@
+{
+    "version": "1",
+    "global_args": {
+        "DiagType": "field",
+        "DiagInfo": {
+            "DiagName": "DGX SPARK Field Diag",
+            "RunLevel": ""
+        }
+    },
+    "actions": [
+        {
+            "virtual_id": "GpuStress",
+            "args": {
+                "timeout_sec": 1800,
+                "component": "GPU",
+                "args": [
+                    "spec=GpuStressSpec"
+                ]
+            },
+            "action": "custommods"
+        },
+        {
+            "virtual_id": "C2CStress",
+            "args": {
+                "timeout_sec": 600,
+                "component": "C2C",
+                "args": [
+                    "spec=C2CStressSpec"
+                ]
+            },
+            "action": "custommods"
+        },
+        {
+            "virtual_id": "CpuStress1",
+            "args": {
+                "timeout_sec": 600,
+                "component": "CPU",
+                "args": [
+                    "spec=CpuStressSpec"
+                ]
+            },
+            "action": "custommods"
+        },
+        {
+            "virtual_id": "CpuStress2",
+            "args": {
+                "durationS": 600,
+                "tool": "stress-ng",
+                "args": [
+                    "--peterson", "4", "--vm-segv", "32",
+                    "--numa", "4", "--tsearch", "128",
+                    "--ramfs", "16", "--hdd", "16",
+                    "--icmp-flood", "4", "--switch", "4",
+                    "--hrtimers", "16", "--hrtimers-adjust",
+                    "--sysfs", "16", "--klog-check",
+                    "--sysinval", "4", "-t", "300",
+                    "--tz", "-v", "--verify"
+                ]
+            },
+            "action": "cpustress"
+        },
+        {
+            "virtual_id": "PowerStress",
+            "args": {
+                "timeout_sec": 1800,
+                "component": "Power",
+                "args": [
+                    "spec=PowerStressSpec"
+                ]
+            },
+            "action": "custommods"
+        },
+        {
+            "virtual_id": "ThermalStress",
+            "args": {
+                "timeout_sec": 1800,
+                "component": "Thermal",
+                "args": [
+                    "spec=ThermalStressSpec"
+                ]
+            },
+            "action": "custommods"
+        },
+        {
+            "virtual_id": "FioSSD",
+            "args": { 
+                "action": "custom_commands",
+                "sudo": true,
+                "timeout_sec": 1800,
+                "component": "SSD",
+                "commands": [
+                    "fio -name=mytest -filename=/media/nvme0n1p2/test.img -ioengine=psync -direct=1 -rw=read -size=10GB -bs=256KB -iodepth=32 -numjobs=8 -group_reporting"
+                ],
+                "args": []
+            },
+            "action": "custom"
+        },
+        {
+            "virtual_id": "MemStress",
+            "args": { 
+                "action": "custom_commands",
+                "sudo": true,
+                "timeout_sec": 1800,
+                "component": "Memory",
+                "commands": [
+                    "memtester 4096M 1"
+                ],
+                "args": []
+            },
+            "action": "custom"
+        }
+    ]
+}

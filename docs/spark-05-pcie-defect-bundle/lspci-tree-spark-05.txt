@@ -1,0 +1,6 @@
+-[0000:00]---00.0-[01-0f]--
+-[0002:00]---00.0-[01-0f]--
+-[0004:00]---00.0-[01-0f]----00.0  Samsung Electronics Co Ltd Device [144d:a810]
+-[0007:00]---00.0-[01-0f]----00.0  Realtek Semiconductor Co., Ltd. Device [10ec:8127]
+-[0009:00]---00.0-[01-0f]----00.0  MEDIATEK Corp. Device [14c3:7925]
+-[000f:00]---00.0-[01]----00.0  NVIDIA Corporation Device [10de:2e12]

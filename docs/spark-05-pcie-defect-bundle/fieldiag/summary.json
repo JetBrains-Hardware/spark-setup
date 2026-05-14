@@ -1,0 +1,114 @@
+[
+    {
+        "Error Code": "082-000-1-000000000000",
+        "Error Info": {
+            "OneDiagTest": 82,
+            "OneDiagSubtest": 0,
+            "ErrorType": "MODS",
+            "MODSErrorCode": "000000000000"
+        },
+        "Test": "custommods",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "GpuStress"
+    },
+    {
+        "Error Code": "082-000-1-000000000000",
+        "Error Info": {
+            "OneDiagTest": 82,
+            "OneDiagSubtest": 0,
+            "ErrorType": "MODS",
+            "MODSErrorCode": "000000000000"
+        },
+        "Test": "custommods",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "C2CStress"
+    },
+    {
+        "Error Code": "082-000-1-000000000000",
+        "Error Info": {
+            "OneDiagTest": 82,
+            "OneDiagSubtest": 0,
+            "ErrorType": "MODS",
+            "MODSErrorCode": "000000000000"
+        },
+        "Test": "custommods",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "CpuStress1"
+    },
+    {
+        "Error Code": "043-000-0-000000000000",
+        "Error Info": {
+            "OneDiagTest": 43,
+            "OneDiagSubtest": 0,
+            "ErrorType": "DGX",
+            "DGXErrorCode": "000000000000"
+        },
+        "Test": "cpustress",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "CpuStress2"
+    },
+    {
+        "Error Code": "082-000-1-000000000000",
+        "Error Info": {
+            "OneDiagTest": 82,
+            "OneDiagSubtest": 0,
+            "ErrorType": "MODS",
+            "MODSErrorCode": "000000000000"
+        },
+        "Test": "custommods",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "PowerStress"
+    },
+    {
+        "Error Code": "082-000-1-000000000000",
+        "Error Info": {
+            "OneDiagTest": 82,
+            "OneDiagSubtest": 0,
+            "ErrorType": "MODS",
+            "MODSErrorCode": "000000000000"
+        },
+        "Test": "custommods",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "ThermalStress"
+    },
+    {
+        "Error Code": "097-000-0-000000000000",
+        "Error Info": {
+            "OneDiagTest": 97,
+            "OneDiagSubtest": 0,
+            "ErrorType": "DGX",
+            "DGXErrorCode": "000000000000"
+        },
+        "Test": "custom",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "FioSSD"
+    },
+    {
+        "Error Code": "097-000-0-000000000000",
+        "Error Info": {
+            "OneDiagTest": 97,
+            "OneDiagSubtest": 0,
+            "ErrorType": "DGX",
+            "DGXErrorCode": "000000000000"
+        },
+        "Test": "custom",
+        "Component ID": "",
+        "Notes": "OK",
+        "PassOnFail": "False",
+        "Virtual ID": "MemStress"
+    }
+]
