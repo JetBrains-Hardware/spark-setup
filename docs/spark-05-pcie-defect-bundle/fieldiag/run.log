@@ -1,0 +1,52 @@
+Command Line: onediagfield.r9.257.3 --keep_disp_enabled --log=/home/jetbrains/spark-setup-baremetal/fieldiag-logs --force_product=spark --run_spec=spec_dgx_spark_field_level2.json
+******************************************************************
+*                                                                *
+*                      DGX FIELD DIAGNOSTIC                      *
+*                                                                *
+******************************************************************
+
+Version                  r9.257.3
+Python                   /opt/nvidia/dgx-spark-fieldiag/dgx/python/python-3.10.7-glibc-2.17-aarch64/bin/python3
+Build Date               Fri, 19 Dec 2025
+Start time               Sun, 10 May 2026 22:33:06
+Est. Completion time     Mon, 11 May 2026 01:35:36
+Logs                     /home/jetbrains/spark-setup-baremetal/fieldiag-logs
+Inforom logs             /home/jetbrains/spark-setup-baremetal/fieldiag-logs/inforom
+Product                  NVIDIA_DGX_Spark
+Product Version          A.7
+Family                   DGX Spark
+SKU                      0000
+Serial Number            1984025007690
+
+Testing GpuStress OK [ 3:19s ]
+Testing C2CStress OK [ 0:06s ]
+Testing CpuStress1 OK [ 0:08s ]
+Testing CpuStress2 OK [ 10:14s ]
+Testing PowerStress OK [ 8:11s ]
+Testing ThermalStress OK [ 0:42s ]
+Testing FioSSD OK [ 0:11s ]
+Testing MemStress OK [ 7:08s ]
+
+Exit Code         | Virtual Id    | Test       | Subtest | Component | Component Id | Notes
+===========================================================================================
+MODS-000000000000 | GpuStress     | custommods |         | GPU       |              | OK
+MODS-000000000000 | C2CStress     | custommods |         | C2C       |              | OK
+MODS-000000000000 | CpuStress1    | custommods |         | CPU       |              | OK
+DGX-000000000000  | CpuStress2    | cpustress  |         | CPU       |              | OK
+MODS-000000000000 | PowerStress   | custommods |         | Power     |              | OK
+MODS-000000000000 | ThermalStress | custommods |         | Thermal   |              | OK
+DGX-000000000000  | FioSSD        | custom     |         | SSD       |              | OK
+DGX-000000000000  | MemStress     | custom     |         | Memory    |              | OK
+
+#######     ####     ######    ###### 
+########   ######   ########  ########
+##    ##  ##    ##  ##     #  ##     #
+##    ##  ##    ##   ###       ###    
+########  ########    ####      ####  
+#######   ########      ###       ### 
+##        ##    ##  #     ##  #     ##
+##        ##    ##  ########  ########
+##        ##    ##   ######    ###### 
+
+Final Result: PASS
+End time: Sun, 10 May 2026 23:03:09 [ 30:03s elapsed ]

@@ -5,6 +5,8 @@ spark-recovery
 .env
 .env.*
 *.log
+# Submission bundles need their .log files tracked — they are the evidence.
+!docs/spark-05-pcie-defect-bundle/**/*.log
 .cache/
 tmp/
 __pycache__/

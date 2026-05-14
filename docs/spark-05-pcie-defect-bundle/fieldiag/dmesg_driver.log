@@ -1,0 +1,3 @@
+[Sun May 10 22:33:05 2026] mods: module verification failed: signature and/or required key missing - tainting kernel
+[Sun May 10 22:33:05 2026] mods: *** WARNING: DIAGNOSTIC DRIVER LOADED ***
+[Sun May 10 22:33:05 2026] mods: driver loaded, version 4.31

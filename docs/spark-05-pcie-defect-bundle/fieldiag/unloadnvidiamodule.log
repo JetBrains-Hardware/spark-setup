@@ -1,0 +1,359 @@
+Checking if udevfix WAR is needed
+No need for udevfix WAR
+Checking and disabling driver persistence mode
+Persistence mode is already Disabled for GPU 0000000F:01:00.0.
+All done.
+Driver persistence mode disabled successfully using nvidia-smi
+Checking if rm_driver_discovery process is running
+Keeping display enabled
+Driver Unload Loop 0/10:
+Service nvidia-docker already inactive/not loaded/not a service
+Service docker already inactive/not loaded/not a service
+Service nvidia-* already inactive/not loaded/not a service
+Service nvidia-persistenced already inactive/not loaded/not a service
+Service fabricmanager already inactive/not loaded/not a service
+Service nvidia-fabricmanager already inactive/not loaded/not a service
+Service dcgm already inactive/not loaded/not a service
+Service dcgm-exporter already inactive/not loaded/not a service
+Service dcgm-exporter.service already inactive/not loaded/not a service
+Service nvidia-dcgm already inactive/not loaded/not a service
+Service nvidia-nvsm already inactive/not loaded/not a service
+Service gdrdrv already inactive/not loaded/not a service
+Service nv_peer_mem already inactive/not loaded/not a service
+Service nvsm* already inactive/not loaded/not a service
+Service systemd-udevd already inactive/not loaded/not a service
+Service systemd-udevd-kernel.socket already inactive/not loaded/not a service
+Service systemd-udevd-control.socket already inactive/not loaded/not a service
+Checking for module: nouveau
+Module: nouveau not loaded
+Checking for module: nv_peer_mem
+Module: nv_peer_mem not loaded
+Checking for module: nv_peermem
+Module: nv_peermem not loaded
+Checking for module: nvidia_peermem
+Module: nvidia_peermem not loaded
+Checking for module: gdrdrv
+Module: gdrdrv not loaded
+Checking for module: nvidia_uvm
+Attempting to remove module: nvidia_uvm Attempt 1
+Removed module: nvidia_uvm successfully
+Checking for module: nvidia_drm
+Attempting to remove module: nvidia_drm Attempt 1
+Removed module: nvidia_drm successfully
+Checking for module: nvidia_modeset
+Attempting to remove module: nvidia_modeset Attempt 1
+Removed module: nvidia_modeset successfully
+Checking for module: nvidia_vgpu_vfio
+Module: nvidia_vgpu_vfio not loaded
+Checking for module: nvidia_fs
+Module: nvidia_fs not loaded
+Checking for module: nvidia_cspmu
+Module: nvidia_cspmu not loaded
+Checking for module: nvidiafb
+Module: nvidiafb not loaded
+Checking for module: nvidia
+Attempting to remove module: nvidia Attempt 1
+Removed module: nvidia successfully
+Checking for module: nvtool
+Module: nvtool not loaded
+Checking to ensure the unloaded modules are not reloaded by an unknown service
+Check 1/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 2/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 3/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 4/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 5/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 6/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 7/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 8/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 9/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded
+Check 10/10:
+Checking if any driver modules are loaded:
+Checking if nouveau driver is loaded
+nouveau not loaded
+Checking if nv_peer_mem driver is loaded
+nv_peer_mem not loaded
+Checking if nv_peermem driver is loaded
+nv_peermem not loaded
+Checking if nvidia_peermem driver is loaded
+nvidia_peermem not loaded
+Checking if gdrdrv driver is loaded
+gdrdrv not loaded
+Checking if nvidia_uvm driver is loaded
+nvidia_uvm not loaded
+Checking if nvidia_drm driver is loaded
+nvidia_drm not loaded
+Checking if nvidia_modeset driver is loaded
+nvidia_modeset not loaded
+Checking if nvidia_vgpu_vfio driver is loaded
+nvidia_vgpu_vfio not loaded
+Checking if nvidia_fs driver is loaded
+nvidia_fs not loaded
+Checking if nvidia_cspmu driver is loaded
+nvidia_cspmu not loaded
+Checking if nvidiafb driver is loaded
+nvidiafb not loaded
+Checking if nvidia driver is loaded
+nvidia not loaded
+Checking if nvtool driver is loaded
+nvtool not loaded

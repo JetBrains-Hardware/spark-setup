@@ -1,0 +1,24 @@
+[cmd-1] $ dmidecode -t system
+[cmd-1] # dmidecode 3.5
+[cmd-1] Getting SMBIOS data from sysfs.
+[cmd-1] SMBIOS 3.3.0 present.
+[cmd-1] 
+[cmd-1] Handle 0x0001, DMI type 1, 27 bytes
+[cmd-1] System Information
+[cmd-1] 	Manufacturer: NVIDIA
+[cmd-1] 	Product Name: NVIDIA_DGX_Spark
+[cmd-1] 	Version: A.7
+[cmd-1] 	Serial Number: 1984025007690
+[cmd-1] 	UUID: d15b4876-bfde-11d3-8000-4cbb472f6487
+[cmd-1] 	Wake-up Type: Power Switch
+[cmd-1] 	SKU Number: 0000
+[cmd-1] 	Family: DGX Spark
+[cmd-1] 
+[cmd-1] Handle 0x0005, DMI type 12, 5 bytes
+[cmd-1] System Configuration Options
+[cmd-1] 	Option 1: 675-54242-0000-000
+[cmd-1] 
+[cmd-1] Handle 0x0007, DMI type 32, 11 bytes
+[cmd-1] System Boot Information
+[cmd-1] 	Status: No errors detected
+[cmd-1] 
